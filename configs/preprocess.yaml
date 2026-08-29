@@ -1,0 +1,25 @@
+preprocess:
+  summary_directory: ../preprocess_summaries
+  resize:
+    spacing: [1.0, 1.0, 1.0]
+  window:
+    width: 1500
+    level: -600
+  slice:
+    depth: 64
+    size: 64
+  clahe:
+    clip_limit: 3.0
+    tile_grid_size: [8, 8]
+  cohorts:
+    internal:
+      raw_root: ../data/raw/internal
+      raw_directories:
+        ct: ct
+        pet: pet
+        ct_mask: ct_mask
+        pet_mask: pet_mask
+      resampled_root: ../data/processed/internal/resampled
+      windowed_ct_root: ../data/processed/internal/windowed_ct
+      sliced_root: ../data/processed/internal/sliced
+      clahe_root: ../data/processed/internal/clahe

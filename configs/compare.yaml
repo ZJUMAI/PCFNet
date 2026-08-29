@@ -1,0 +1,46 @@
+seed: 513
+deterministic: true
+device: auto
+
+cross_validation:
+  folds: 10
+
+data:
+  id_column: patient_id
+  label_column: label
+  depth: 64
+  image_size: 64
+  strict_slice_count: true
+  augment_probability: 0.5
+  train:
+    manifest: ../dataset/train_fold_{fold}.txt
+    metadata: ../data/metadata.csv
+    ct_root: ../data/images/internal/ct
+    pet_root: ../data/images/internal/pet
+  validation:
+    manifest: ../dataset/valid_fold_{fold}.txt
+    metadata: ../data/metadata.csv
+    ct_root: ../data/images/internal/ct
+    pet_root: ../data/images/internal/pet
+  external: {}
+
+model:
+  name: densenet
+  params:
+    depth: 64
+    num_classes: 2
+    pretrained: true
+
+training:
+  epochs: 100
+  batch_size: 8
+  num_workers: 4
+  early_stopping_patience: 20
+  optimizer: {name: adamw, learning_rate: 0.0001, weight_decay: 0.0001}
+  scheduler: {factor: 0.2, patience: 10}
+  loss: {name: focal, alpha: 0.25, gamma: 2.0}
+
+output:
+  root: ../runs
+  run_name: densenet_crossval
+  save_predictions: false

@@ -1,0 +1,30 @@
+seed: 513
+device: auto
+
+data:
+  id_column: patient_id
+  label_column: label
+  depth: 64
+  image_size: 64
+  strict_slice_count: true
+  external:
+    external_site:
+      manifest: ../dataset/SPH_test.txt
+      metadata: ../data/external_metadata.csv
+      ct_root: ../data/images/external/ct
+      pet_root: ../data/images/external/pet
+
+model:
+  name: fusion3d
+  params: {num_classes: 2, dropout: 0.5, num_heads: 8, pretrained: false}
+
+training:
+  batch_size: 8
+  num_workers: 4
+  loss: {name: focal, alpha: 0.25, gamma: 2.0}
+
+evaluate:
+  task: checkpoint
+  checkpoint: ../runs/fusion3d/best.pt
+  output: ../runs/fusion3d/final_evaluation.json
+  save_predictions: false

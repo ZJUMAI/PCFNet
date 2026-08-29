@@ -1,0 +1,20 @@
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.venv/
+*.py[cod]
+
+# Private inputs and generated artifacts
+data/
+runs/
+preprocess_summaries/
+*.xlsx
+*.xls
+*.pt
+*.pth
+*.joblib
+*.db
+
+# Anonymous predictions are opt-in and should be reviewed before sharing
+predictions_*.csv
+evaluation_predictions/

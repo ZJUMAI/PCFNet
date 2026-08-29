@@ -1,0 +1,63 @@
+seed: 513
+deterministic: true
+device: auto
+
+data:
+  id_column: patient_id
+  label_column: label
+  depth: 64
+  image_size: 64
+  strict_slice_count: true
+  augment_probability: 0.5
+  positive_values: [1, yes, true]
+  negative_values: [0, no, false]
+  train:
+    manifest: ../dataset/train.txt
+    metadata: ../data/metadata.csv
+    ct_root: ../data/images/internal/ct
+    pet_root: ../data/images/internal/pet
+  validation:
+    manifest: ../dataset/valid.txt
+    metadata: ../data/metadata.csv
+    ct_root: ../data/images/internal/ct
+    pet_root: ../data/images/internal/pet
+  external:
+    external_site:
+      manifest: ../dataset/SPH_test.txt
+      metadata: ../data/external_metadata.csv
+      ct_root: ../data/images/external/ct
+      pet_root: ../data/images/external/pet
+
+model:
+  name: fusion3d
+  params:
+    num_classes: 2
+    dropout: 0.5
+    num_heads: 8
+    pretrained: true
+
+training:
+  epochs: 100
+  batch_size: 8
+  num_workers: 4
+  pin_memory: true
+  early_stopping_patience: 20
+  optimizer:
+    name: adamw
+    learning_rate: 0.0001
+    weight_decay: 0.0001
+  scheduler:
+    factor: 0.2
+    patience: 10
+  loss:
+    name: focal
+    alpha: 0.25
+    gamma: 2.0
+
+evaluation:
+  external_after_training: true
+
+output:
+  root: ../runs
+  run_name: fusion3d
+  save_predictions: false

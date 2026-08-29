@@ -1,0 +1,56 @@
+seed: 513
+deterministic: true
+device: auto
+
+data:
+  id_column: patient_id
+  label_column: label
+  depth: 64
+  image_size: 64
+  strict_slice_count: true
+  augment_probability: 0.5
+  train:
+    manifest: ../dataset/train.txt
+    metadata: ../data/metadata.csv
+    ct_root: ../data/images/internal/ct
+    pet_root: ../data/images/internal/pet
+  validation:
+    manifest: ../dataset/valid.txt
+    metadata: ../data/metadata.csv
+    ct_root: ../data/images/internal/ct
+    pet_root: ../data/images/internal/pet
+
+model:
+  name: fusion3d
+  params: {num_classes: 2, dropout: 0.5, num_heads: 8, pretrained: true}
+
+training:
+  epochs: 50
+  batch_size: 8
+  num_workers: 4
+  early_stopping_patience: 10
+  optimizer: {name: adamw, learning_rate: 0.0001, weight_decay: 0.0001}
+  scheduler: {factor: 0.2, patience: 5}
+  loss: {name: focal, alpha: 0.25, gamma: 2.0}
+
+evaluation:
+  external_after_training: false
+
+hpo:
+  study_name: petct_fusion3d
+  trials: 30
+  seed: 513
+  pruner_startup_trials: 5
+  pruner_warmup_steps: 3
+  keep_trial_outputs: false
+  search_space:
+    training.optimizer.learning_rate: {type: float, low: 0.00001, high: 0.001, log: true}
+    training.optimizer.weight_decay: {type: float, low: 0.000001, high: 0.01, log: true}
+    training.batch_size: {type: categorical, choices: [4, 8, 16]}
+    training.loss.gamma: {type: float, low: 1.0, high: 4.0}
+    model.params.dropout: {type: float, low: 0.2, high: 0.7}
+
+output:
+  root: ../runs
+  run_name: fusion3d_search
+  save_predictions: false
