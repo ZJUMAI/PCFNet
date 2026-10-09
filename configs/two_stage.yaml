@@ -11,33 +11,33 @@ data:
   augment_probability: 0.5
   train:
     manifest: ../dataset/train.txt
-    metadata: /data4/zhenglujie/petct/PET_SPH_training_2025-4-8/PET_SPH_radiomics-2025-4-8.xlsx
+    metadata: /data4/zhenglujie/petct/PET_SPH_training_2025-4-8/PET_SPH_radiomics-2025-8-14.xlsx
     ct_root: /data4/zhenglujie/petct/clahed_64_0.2_20/sph/ct
     pet_root: /data4/zhenglujie/petct/clahed_64_0.2_20/sph/pet
   validation:
     manifest: ../dataset/valid.txt
-    metadata: /data4/zhenglujie/petct/PET_SPH_training_2025-4-8/PET_SPH_radiomics-2025-4-8.xlsx
+    metadata: /data4/zhenglujie/petct/PET_SPH_training_2025-4-8/PET_SPH_radiomics-2025-8-14.xlsx
     ct_root: /data4/zhenglujie/petct/clahed_64_0.2_20/sph/ct
     pet_root: /data4/zhenglujie/petct/clahed_64_0.2_20/sph/pet
   external:
     ruijin:
       manifest: ../dataset/ruijin.txt
-      metadata: /data4/zhenglujie/petct/External_validation_PET_2025-4-8/PET_External_radiomics-2025-4-8.xlsx
+      metadata: /data4/zhenglujie/petct/PET_SPH_training_2025-4-8/PET_External_radiomics-2025-8-14.xlsx
       ct_root: /data4/zhenglujie/petct/clahed_64_0.2_20/ruijin/ct
       pet_root: /data4/zhenglujie/petct/clahed_64_0.2_20/ruijin/pet
     wuhan:
       manifest: ../dataset/wuhan.txt
-      metadata: /data4/zhenglujie/petct/External_validation_PET_2025-4-8/PET_External_radiomics-2025-4-8.xlsx
+      metadata: /data4/zhenglujie/petct/PET_SPH_training_2025-4-8/PET_External_radiomics-2025-8-14.xlsx
       ct_root: /data4/zhenglujie/petct/clahed_64_0.2_20/wuhan/ct
       pet_root: /data4/zhenglujie/petct/clahed_64_0.2_20/wuhan/pet
     FUSCC:
       manifest: ../dataset/FUSCC.txt
-      metadata: /data4/zhenglujie/petct/External_Validation_PET_2025_5_9/PET_External_radiomics-2025-5-9.xlsx
+      metadata: /data4/zhenglujie/petct/PET_SPH_training_2025-4-8/PET_External_radiomics-2025-8-14.xlsx
       ct_root: /data4/zhenglujie/petct/clahed_64_0.2_20/FUSCC/ct
       pet_root: /data4/zhenglujie/petct/clahed_64_0.2_20/FUSCC/pet
     SPH_test:
       manifest: ../dataset/SPH_test.txt
-      metadata: /data4/zhenglujie/petct/External_Validation_PET_2025_5_9/PET_External_radiomics-2025-5-9.xlsx
+      metadata: /data4/zhenglujie/petct/PET_SPH_training_2025-4-8/PET_External_radiomics-2025-8-14.xlsx
       ct_root: /data4/zhenglujie/petct/clahed_64_0.2_20/SPH_test/ct
       pet_root: /data4/zhenglujie/petct/clahed_64_0.2_20/SPH_test/pet
 

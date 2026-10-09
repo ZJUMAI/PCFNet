@@ -6,6 +6,20 @@ path to that existing table, not an additional file you need to create. The ID
 column is `影像组学序列号` and the outcome column is `pCR`. Only these two columns
 are used. Do not commit the label tables.
 
+The server label tables are:
+
+- Internal SPH: `/data4/zhenglujie/petct/PET_SPH_training_2025-4-8/PET_SPH_radiomics-2025-8-14.xlsx`.
+- External ruijin, wuhan, FUSCC, and SPH_test: `/data4/zhenglujie/petct/PET_SPH_training_2025-4-8/PET_External_radiomics-2025-8-14.xlsx`.
+
+`dataset/france.txt` retains the 40-case France cohort. France is not yet enabled
+in the default evaluation configurations: its server label-table and paired
+CT/PET paths must be confirmed separately. Do not assume that the four-cohort
+external table also contains France labels.
+
+中文说明：内部 SPH 使用上述内部标签表，四个外部队列共用上述外部标签表。
+France 的 40 例名单已保留，待确认服务器上的标签表及 CT/PET 路径后再启用，
+不能直接假定其标签也在四队列外部表中。
+
 - `data`: metadata schema, volume shape, augmentation, and split-specific
   manifests/CT/PET roots. `external` is a named cohort mapping.
 - `model`: registry name and constructor parameters.

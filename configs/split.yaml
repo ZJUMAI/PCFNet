@@ -1,5 +1,5 @@
 split:
-  metadata: /data4/zhenglujie/petct/PET_SPH_training_2025-4-8/PET_SPH_radiomics-2025-4-8.xlsx
+  metadata: /data4/zhenglujie/petct/PET_SPH_training_2025-4-8/PET_SPH_radiomics-2025-8-14.xlsx
   id_column: 影像组学序列号
   label_column: pCR
   source_manifests:
