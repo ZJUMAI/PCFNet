@@ -5,52 +5,63 @@ from __future__ import annotations
 import json
 from typing import Any
 
-import pandas as pd
-from sklearn.model_selection import StratifiedKFold
+import numpy as np
+from sklearn.model_selection import StratifiedKFold, train_test_split
 
 from .config import resolve_config_path
-from .data import parse_binary_label
+from .metadata import load_metadata, parse_binary_label
 
 
 def run_split(config: dict[str, Any]) -> dict[str, Any]:
     settings = config.get("split", {})
     metadata_path = resolve_config_path(config, settings["metadata"])
-    suffix = metadata_path.suffix.lower()
-    if suffix == ".xlsx":
-        frame = pd.read_excel(metadata_path)
-    elif suffix == ".csv":
-        frame = pd.read_csv(metadata_path)
-    else:
-        raise ValueError("split.metadata must be a CSV or XLSX file")
     id_column = str(settings["id_column"])
     label_column = str(settings["label_column"])
-    missing = {id_column, label_column} - set(frame.columns)
-    if missing:
-        raise ValueError(f"Metadata is missing columns: {sorted(missing)}")
-    frame = frame[[id_column, label_column]].copy()
-    frame[id_column] = frame[id_column].astype(str).str.strip()
-    if frame[id_column].duplicated().any():
-        raise ValueError("Metadata contains duplicate patient IDs")
+    frame = load_metadata(metadata_path, id_column, label_column)
     labels = frame[label_column].map(parse_binary_label).to_numpy()
-    identifiers = frame[id_column].to_numpy()
-    folds = int(settings.get("folds", 10))
-    splitter = StratifiedKFold(
-        n_splits=folds, shuffle=True, random_state=int(settings.get("seed", 42))
-    )
-    output = resolve_config_path(config, settings.get("output_directory", "dataset/splits"))
-    output.mkdir(parents=True, exist_ok=True)
-    pattern = str(settings.get("filename_pattern", "fold_{fold}_{split}.txt"))
-    for fold, (train_indices, validation_indices) in enumerate(
-        splitter.split(identifiers, labels), start=1
-    ):
-        for split, indices in (("train", train_indices), ("validation", validation_indices)):
-            path = output / pattern.format(fold=fold, split=split)
-            path.write_text("\n".join(identifiers[indices]) + "\n", encoding="utf-8")
+    identifiers = frame.index.to_numpy()
+    mode = str(settings.get("mode", "kfold"))
+    seed = int(settings.get("seed", 42))
     summary = {
         "cases": int(len(frame)),
-        "folds": folds,
         "positive": int(labels.sum()),
         "negative": int((labels == 0).sum()),
     }
+    if mode == "holdout":
+        validation_fraction = float(settings.get("validation_fraction", 0.2))
+        if not 0.0 < validation_fraction < 1.0:
+            raise ValueError("split.validation_fraction must be between 0 and 1")
+        if np.unique(labels).size != 2:
+            raise ValueError("Stratified holdout requires both binary classes")
+        train_indices, validation_indices = train_test_split(
+            np.arange(len(frame)),
+            test_size=validation_fraction,
+            random_state=seed,
+            shuffle=True,
+            stratify=labels,
+        )
+        splits = [(train_indices, validation_indices)]
+        pattern = str(settings.get("filename_pattern", "{split}.txt"))
+        summary.update({"mode": mode, "seed": seed, "validation_fraction": validation_fraction})
+        for name, indices in (("train", train_indices), ("validation", validation_indices)):
+            summary[name] = {
+                "cases": int(len(indices)),
+                "positive": int(labels[indices].sum()),
+                "negative": int((labels[indices] == 0).sum()),
+            }
+    elif mode == "kfold":
+        folds = int(settings.get("folds", 10))
+        splitter = StratifiedKFold(n_splits=folds, shuffle=True, random_state=seed)
+        splits = list(splitter.split(identifiers, labels))
+        pattern = str(settings.get("filename_pattern", "fold_{fold}_{split}.txt"))
+        summary["folds"] = folds
+    else:
+        raise ValueError("split.mode must be 'holdout' or 'kfold'")
+    output = resolve_config_path(config, settings.get("output_directory", "dataset/splits"))
+    output.mkdir(parents=True, exist_ok=True)
+    for fold, (train_indices, validation_indices) in enumerate(splits, start=1):
+        for split, indices in (("train", train_indices), ("validation", validation_indices)):
+            path = output / pattern.format(fold=fold, split=split)
+            path.write_text("\n".join(identifiers[indices]) + "\n", encoding="utf-8")
     (output / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     return summary

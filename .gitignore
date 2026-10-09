@@ -18,3 +18,6 @@ preprocess_summaries/
 # Anonymous predictions are opt-in and should be reviewed before sharing
 predictions_*.csv
 evaluation_predictions/
+
+# Locally generated patient-level split manifests
+dataset/generated_split_80_20/

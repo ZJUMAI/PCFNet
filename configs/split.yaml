@@ -2,7 +2,8 @@ split:
   metadata: ../data/metadata.csv
   id_column: patient_id
   label_column: label
-  folds: 10
+  mode: holdout
+  validation_fraction: 0.2
   seed: 513
-  output_directory: ../dataset/generated_splits
-  filename_pattern: fold_{fold}_{split}.txt
+  output_directory: ../dataset/generated_split_80_20
+  filename_pattern: '{split}.txt'

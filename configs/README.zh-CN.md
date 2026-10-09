@@ -12,3 +12,21 @@
 - `evaluate`：指标、Youden、十折汇总、配对 DeLong 或 checkpoint 外部终评。
 
 `--set` 使用 YAML 类型解析，例如 `--set model.params.pretrained=false` 是布尔值。
+
+`split.yaml` 默认按标签分层生成 80% 训练、20% 验证名单，随机种子为 513。
+`split.metadata` 必须指向仅包含待划分内部队列的 CSV/XLSX（含 ID 和二分类标签），
+不要将外部测试队列加入该文件。先运行：
+
+```bash
+python -m petct split --config configs/split.yaml
+python -m petct train --config configs/train.yaml
+```
+
+名单输出到 `dataset/generated_split_80_20/train.txt` 和 `validation.txt`，
+`train.yaml` 已指向这两个文件。`summary.json` 记录各组总数及阳性/阴性数，
+人数不能整除时比例会略有取整。验证集用于早停与模型选择，外部测试队列保持独立。
+划分配置和训练配置的 metadata 路径及列名应保持一致。
+
+如需十折划分，设置 `split.mode: kfold`、`split.folds: 10`，
+并将输出目录改为 `../dataset/generated_splits`、文件名模板改为
+`fold_{fold}_{split}.txt`，再将交叉验证配置指向生成的名单。

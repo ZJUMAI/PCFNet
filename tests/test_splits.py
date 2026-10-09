@@ -1,0 +1,139 @@
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+import pandas as pd
+import pytest
+import yaml
+
+from petct.config import ConfigError, load_config, resolve_config_path
+from petct.splits import run_split
+
+
+def _config(tmp_path: Path) -> dict:
+    pd.DataFrame(
+        {"patient_id": [f"case_{i:03d}" for i in range(100)], "label": [0] * 70 + [1] * 30}
+    ).to_csv(tmp_path / "metadata.csv", index=False)
+    return {
+        "_meta": {"config_dir": str(tmp_path)},
+        "split": {
+            "metadata": "metadata.csv",
+            "id_column": "patient_id",
+            "label_column": "label",
+            "mode": "holdout",
+            "validation_fraction": 0.2,
+            "seed": 513,
+            "output_directory": "splits",
+        },
+    }
+
+
+def _ids(path: Path) -> list[str]:
+    return path.read_text(encoding="utf-8").splitlines()
+
+
+def test_holdout_is_stratified_disjoint_complete_and_reproducible(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    summary = run_split(config)
+    train_path = tmp_path / "splits/train.txt"
+    validation_path = tmp_path / "splits/validation.txt"
+    train, validation = _ids(train_path), _ids(validation_path)
+    assert len(train) == len(set(train)) == 80
+    assert len(validation) == len(set(validation)) == 20
+    assert set(train).isdisjoint(validation)
+    assert set(train) | set(validation) == {f"case_{i:03d}" for i in range(100)}
+    frame = pd.read_csv(tmp_path / "metadata.csv").set_index("patient_id")
+    assert frame.loc[train, "label"].sum() == 24
+    assert frame.loc[validation, "label"].sum() == 6
+    assert summary["train"] == {"cases": 80, "positive": 24, "negative": 56}
+    assert summary["validation"] == {"cases": 20, "positive": 6, "negative": 14}
+    assert json.loads((tmp_path / "splits/summary.json").read_text()) == summary
+    run_split(config)
+    assert _ids(train_path) == train
+    assert _ids(validation_path) == validation
+
+
+def test_configs_without_mode_keep_kfold_behavior(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    config["split"].pop("mode")
+    config["split"]["folds"] = 10
+    summary = run_split(config)
+    assert summary["folds"] == 10
+    validation_ids = []
+    for fold in range(1, 11):
+        train = _ids(tmp_path / f"splits/fold_{fold}_train.txt")
+        validation = _ids(tmp_path / f"splits/fold_{fold}_validation.txt")
+        assert len(train) == 90
+        assert len(validation) == 10
+        assert set(train).isdisjoint(validation)
+        validation_ids.extend(validation)
+    assert len(set(validation_ids)) == len(validation_ids) == 100
+
+
+@pytest.mark.parametrize("fraction", [0, 1, -0.2, 1.2])
+def test_invalid_holdout_ratio_creates_no_outputs(tmp_path: Path, fraction: float) -> None:
+    config = _config(tmp_path)
+    config["split"]["validation_fraction"] = fraction
+    with pytest.raises(ValueError, match="validation_fraction"):
+        run_split(config)
+    assert not (tmp_path / "splits").exists()
+
+
+@pytest.mark.parametrize("invalid", ["duplicate", "empty", "single_class", "unknown_label"])
+def test_invalid_metadata_creates_no_outputs(tmp_path: Path, invalid: str) -> None:
+    config = _config(tmp_path)
+    frame = pd.read_csv(tmp_path / "metadata.csv")
+    if invalid == "duplicate":
+        frame.loc[1, "patient_id"] = frame.loc[0, "patient_id"]
+    elif invalid == "empty":
+        frame.loc[0, "patient_id"] = " "
+    elif invalid == "single_class":
+        frame["label"] = 0
+    else:
+        frame["label"] = "unknown"
+    frame.to_csv(tmp_path / "metadata.csv", index=False)
+    with pytest.raises((ConfigError, ValueError)):
+        run_split(config)
+    assert not (tmp_path / "splits").exists()
+
+
+@pytest.mark.parametrize("filename", ["metadata.csv", "metadata.xlsx"])
+def test_numeric_ids_match_training_normalization(tmp_path: Path, filename: str) -> None:
+    config = _config(tmp_path)
+    config["split"]["metadata"] = filename
+    frame = pd.DataFrame({"patient_id": [float(i) for i in range(100)], "label": [0, 1] * 50})
+    if filename.endswith(".xlsx"):
+        pytest.importorskip("openpyxl")
+        frame.to_excel(tmp_path / filename, index=False)
+    else:
+        frame.to_csv(tmp_path / filename, index=False)
+    run_split(config)
+    identifiers = _ids(tmp_path / "splits/train.txt") + _ids(tmp_path / "splits/validation.txt")
+    assert set(identifiers) == {str(i) for i in range(100)}
+
+
+def test_split_cli_runs_without_importing_training(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    path = tmp_path / "split.yaml"
+    path.write_text(yaml.safe_dump({"split": config["split"]}), encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, "-m", "petct", "split", "--config", str(path)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert len(_ids(tmp_path / "splits/train.txt")) == 80
+    assert len(_ids(tmp_path / "splits/validation.txt")) == 20
+
+
+def test_example_training_uses_holdout_output_paths() -> None:
+    root = Path(__file__).resolve().parents[1]
+    split = load_config(root / "configs/split.yaml")
+    train = load_config(root / "configs/train.yaml")
+    output = resolve_config_path(split, split["split"]["output_directory"])
+    assert split["split"]["mode"] == "holdout"
+    assert split["split"]["validation_fraction"] == 0.2
+    for name in ("train", "validation"):
+        assert resolve_config_path(train, train["data"][name]["manifest"]) == output / f"{name}.txt"

@@ -12,12 +12,12 @@ data:
   positive_values: [1, yes, true]
   negative_values: [0, no, false]
   train:
-    manifest: ../dataset/train.txt
+    manifest: ../dataset/generated_split_80_20/train.txt
     metadata: ../data/metadata.csv
     ct_root: /data4/zhenglujie/petct/clahed_64_0.2_20/sph/ct
     pet_root: /data4/zhenglujie/petct/clahed_64_0.2_20/sph/pet
   validation:
-    manifest: ../dataset/valid.txt
+    manifest: ../dataset/generated_split_80_20/validation.txt
     metadata: ../data/metadata.csv
     ct_root: /data4/zhenglujie/petct/clahed_64_0.2_20/sph/ct
     pet_root: /data4/zhenglujie/petct/clahed_64_0.2_20/sph/pet
