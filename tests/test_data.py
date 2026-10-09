@@ -10,7 +10,7 @@ pytest.importorskip("torchio")
 
 import torchio as tio
 
-from petct.config import ConfigError
+from petct.config import ConfigError, load_config
 from petct.data import PETCTDataset, natural_key, parse_binary_label
 
 
@@ -52,6 +52,24 @@ def test_dataset_returns_fixed_volume(tmp_path: Path) -> None:
     assert tuple(sample["ct"].shape) == (64, 64, 64)
     assert tuple(sample["pet"].shape) == (64, 64, 64)
     assert sample["label"].item() == 1
+
+
+@pytest.mark.parametrize(("value", "expected"), [("是", 1), ("否", 0)])
+def test_training_config_accepts_chinese_dataset_labels(tmp_path: Path, value, expected) -> None:
+    manifest, metadata, ct, pet = _inputs(tmp_path)
+    pd.DataFrame({"patient": [27], "outcome": [value]}).to_csv(metadata, index=False)
+    config = load_config(Path(__file__).resolve().parents[1] / "configs/train.yaml")
+    dataset = PETCTDataset(
+        manifest,
+        metadata,
+        ct,
+        pet,
+        id_column="patient",
+        label_column="outcome",
+        positive_values=config["data"].get("positive_values"),
+        negative_values=config["data"].get("negative_values"),
+    )
+    assert dataset[0]["label"].item() == expected
 
 
 def test_missing_modality_is_rejected(tmp_path: Path) -> None:
