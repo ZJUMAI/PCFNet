@@ -40,3 +40,28 @@ def test_training_schema_rejects_missing_split_fields() -> None:
     }
     with pytest.raises(ConfigError, match="data.train"):
         validate_config(config, "train")
+
+
+@pytest.mark.parametrize(
+    ("filename", "command"),
+    [("train.yaml", "train"), ("two_stage.yaml", "two-stage"), ("evaluate.yaml", "evaluate")],
+)
+def test_france_external_configuration(filename: str, command: str) -> None:
+    config = load_config(Path(__file__).resolve().parents[1] / "configs" / filename)
+    validate_config(config, command)
+    assert set(config["data"]["external"]) == {"ruijin", "wuhan", "FUSCC", "SPH_test", "france"}
+    france = config["data"]["external"]["france"]
+    assert france["id_column"] == "number"
+    assert france["label_column"] == "pCR"
+    assert france["metadata"].endswith("/PET_France/PETCT.xlsx")
+    assert france["ct_root"].endswith("/robust_match_64_0.2_20/france/ct")
+    assert france["pet_root"].endswith("/robust_match_64_0.2_20/france/pet")
+    manifest = resolve_config_path(config, france["manifest"])
+    assert manifest.name == "france.txt"
+    assert manifest.is_file()
+
+
+def test_hpo_configuration_has_no_external_cohorts() -> None:
+    config = load_config(Path(__file__).resolve().parents[1] / "configs" / "hpo.yaml")
+    validate_config(config, "hpo")
+    assert not config["data"].get("external")
