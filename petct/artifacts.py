@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import json
 import logging
+from collections.abc import Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -97,13 +98,55 @@ def save_checkpoint(
 
 
 def save_predictions(
-    path: Path, labels: np.ndarray, probabilities: np.ndarray, enabled: bool
+    path: Path,
+    labels: np.ndarray,
+    probabilities: np.ndarray,
+    enabled: bool,
+    *,
+    identifiers: Sequence[str] | None = None,
+    threshold: float = 0.5,
 ) -> None:
-    """Optionally save paired predictions without identifiers."""
+    """Save anonymous predictions or an explicitly requested identified test table.
+
+    Probabilities always refer to class 1 (pCR). Identified tables contain the
+    case ID, correctness flag, positive probability, predicted class, and label.
+    """
 
     if not enabled:
         return
-    with path.open("w", encoding="utf-8", newline="") as handle:
+    labels = np.asarray(labels)
+    probabilities = np.asarray(probabilities, dtype=float)
+    if labels.ndim != 1 or probabilities.ndim != 1 or len(labels) != len(probabilities):
+        raise ValueError("Prediction labels and probabilities must be equally sized 1D arrays")
+    if not np.isin(labels, [0, 1]).all():
+        raise ValueError("Prediction labels must be binary 0/1 values")
+    if not np.isfinite(probabilities).all() or ((probabilities < 0) | (probabilities > 1)).any():
+        raise ValueError("Prediction probabilities must be finite values between 0 and 1")
+    if not 0 <= threshold <= 1:
+        raise ValueError("Prediction threshold must be between 0 and 1")
+    labels = labels.astype(int)
+    if identifiers is not None:
+        identifiers = list(identifiers)
+        if len(identifiers) != len(labels):
+            raise ValueError("Prediction identifiers must match the number of predictions")
+        if any(
+            not isinstance(identifier, str) or not identifier.strip() for identifier in identifiers
+        ):
+            raise ValueError("Prediction identifiers must be non-empty strings")
+        if len(set(identifiers)) != len(identifiers):
+            raise ValueError("Prediction identifiers must be unique within a cohort")
+    encoding = "utf-8-sig" if identifiers is not None else "utf-8"
+    with path.open("w", encoding=encoding, newline="") as handle:
         writer = csv.writer(handle)
-        writer.writerow(["label", "probability"])
-        writer.writerows(zip(labels.astype(int), probabilities.astype(float), strict=True))
+        if identifiers is None:
+            writer.writerow(["label", "probability"])
+            writer.writerows(zip(labels, probabilities, strict=True))
+        else:
+            predictions = (probabilities >= threshold).astype(int)
+            correct = (predictions == labels).astype(int)
+            writer.writerow(
+                ["影像组学序列号", "是否预测成功", "预测概率", "预测结果", "ground truth"]
+            )
+            writer.writerows(
+                zip(identifiers, correct, probabilities, predictions, labels, strict=True)
+            )

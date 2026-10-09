@@ -35,11 +35,47 @@ France 的 40 例名单已启用，单独使用 `PET_France/PETCT.xlsx`，编号
   manifests/CT/PET roots. `external` is a named cohort mapping.
 - `model`: registry name and constructor parameters.
 - `training`: optimizer, scheduler, loss, loader, epoch, and early-stop settings.
-- `output`: run directory and the opt-in anonymous prediction switch.
+- `output`: run directory, prediction export, and the separate case-ID switch.
 - `hpo`: persistent Optuna study and typed dotted-key search space.
 - `preprocess`: cohort paths and parameters for all four image-processing steps.
 - `evaluate`: aggregate metrics, Youden threshold, fold summary, paired DeLong, or
   checkpoint-based final external evaluation.
+
+## Final test prediction files
+
+The server `train.yaml` and `two_stage.yaml` configurations explicitly set
+`output.save_predictions: true` and `output.save_prediction_ids: true`.
+`evaluate.yaml` sets the same flags under `evaluate`. Library defaults and HPO
+remain disabled. Turn off `save_prediction_ids` for anonymous two-column CSVs,
+or turn off `save_predictions` to write no prediction files.
+
+Final external tests write one UTF-8-with-BOM CSV per cohort, using these columns
+in this order: `影像组学序列号`, `是否预测成功`, `预测概率`, `预测结果`, `ground truth`.
+Probabilities are P(pCR=1) and retain their original numerical precision.
+`预测结果` is 1 when probability >= 0.5, otherwise 0. `是否预测成功` is 1 when
+prediction equals ground truth, otherwise 0. Ground truth is normalized to 0/1.
+The fixed threshold is not selected from external test data.
+
+Training outputs are `runs/<run_name>/predictions_<cohort>.csv`; cross-validation
+outputs are `runs/<run_name>/fold_<n>/predictions_<cohort>.csv`.
+Two-stage runs also export the final tree's validation predictions.
+Checkpoint evaluation writes `<cohort>.csv` in `evaluate.prediction_directory`.
+IDs follow the complete manifest order. Identified exports reject shuffled or
+drop-last loaders. These private results must not be committed or published.
+
+Already-trained checkpoints can be evaluated without retraining. For example:
+
+```bash
+python -m petct evaluate --config configs/evaluate.yaml \
+  --set evaluate.checkpoint=../runs/pcfnet_crossval/fold_1/best.pt \
+  --set evaluate.prediction_directory=../runs/pcfnet_crossval/fold_1/final_predictions \
+  --set evaluate.output=../runs/pcfnet_crossval/fold_1/final_evaluation.json
+```
+
+The metrics, Youden, and paired DeLong evaluation tasks automatically recognize
+both the five-column identified schema and legacy anonymous `label,probability`
+files. For paired DeLong, identified inputs must have the same IDs and labels
+in the same row order. Do not combine different folds as independent patients.
 
 Use YAML-native values in overrides. For example, `--set model.params.pretrained=false`
 is a Boolean while `--set training.batch_size=4` is an integer.

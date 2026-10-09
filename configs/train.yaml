@@ -80,4 +80,5 @@ evaluation:
 output:
   root: ../runs
   run_name: fusion3d
-  save_predictions: false
+  save_predictions: true
+  save_prediction_ids: true

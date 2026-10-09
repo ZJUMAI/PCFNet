@@ -5,13 +5,13 @@ import pytest
 np = pytest.importorskip("numpy")
 pd = pytest.importorskip("pandas")
 Image = pytest.importorskip("PIL.Image")
-pytest.importorskip("torch")
+torch = pytest.importorskip("torch")
 pytest.importorskip("torchio")
 
 import torchio as tio
 
 from petct.config import ConfigError, load_config
-from petct.data import PETCTDataset, natural_key, parse_binary_label
+from petct.data import PETCTDataset, natural_key, parse_binary_label, prediction_identifiers
 
 
 def _case(root: Path, identifier: str, *, slices: int = 64) -> None:
@@ -70,6 +70,20 @@ def test_training_config_accepts_chinese_dataset_labels(tmp_path: Path, value, e
         negative_values=config["data"].get("negative_values"),
     )
     assert dataset[0]["label"].item() == expected
+
+
+def test_identified_exports_require_complete_sequential_evaluation(tmp_path: Path) -> None:
+    manifest, metadata, ct, pet = _inputs(tmp_path)
+    dataset = PETCTDataset(manifest, metadata, ct, pet, id_column="patient", label_column="outcome")
+    sequential = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=False)
+    assert prediction_identifiers(sequential, True) == ["27"]
+    shuffled = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=True)
+    with pytest.raises(ConfigError, match="sequential"):
+        prediction_identifiers(shuffled, True)
+    incomplete = torch.utils.data.DataLoader(dataset, batch_size=2, drop_last=True)
+    with pytest.raises(ConfigError, match="drop_last=False"):
+        prediction_identifiers(incomplete, True)
+    assert prediction_identifiers(shuffled, False) is None
 
 
 def test_missing_modality_is_rejected(tmp_path: Path) -> None:

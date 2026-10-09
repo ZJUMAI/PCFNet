@@ -49,4 +49,6 @@ evaluate:
   task: checkpoint
   checkpoint: ../runs/fusion3d/best.pt
   output: ../runs/fusion3d/final_evaluation.json
-  save_predictions: false
+  save_predictions: true
+  save_prediction_ids: true
+  prediction_directory: ../runs/fusion3d/final_predictions

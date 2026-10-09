@@ -146,3 +146,86 @@ def test_cpu_micro_end_to_end_workflows(tmp_path: Path, monkeypatch) -> None:
         }
     )
     assert "auc" in evaluation
+
+
+def test_final_external_predictions_and_checkpoint_export(tmp_path: Path, monkeypatch) -> None:
+    identifiers = ["003", "001", "002", "004"]
+    _images(tmp_path / "ct", identifiers, 10)
+    _images(tmp_path / "pet", identifiers, 20)
+    pd.DataFrame({"id": identifiers, "label": [0, 1, 0, 1]}).to_csv(
+        tmp_path / "metadata.csv", index=False
+    )
+    (tmp_path / "cases.txt").write_text("\n".join(identifiers) + "\n", encoding="utf-8")
+    split = {
+        "manifest": "cases.txt",
+        "metadata": "metadata.csv",
+        "ct_root": "ct",
+        "pet_root": "pet",
+    }
+    config = {
+        "_meta": {"config_dir": str(tmp_path)},
+        "device": "cpu",
+        "data": {
+            "id_column": "id",
+            "label_column": "label",
+            "depth": 4,
+            "image_size": 8,
+            "train": split,
+            "validation": split,
+            "external": {"synthetic": split},
+        },
+        "model": {"name": "tiny", "params": {}},
+        "training": {
+            "epochs": 1,
+            "batch_size": 2,
+            "num_workers": 0,
+            "loss": {"name": "cross_entropy"},
+        },
+        "output": {
+            "root": ".",
+            "run_name": "train",
+            "save_predictions": True,
+            "save_prediction_ids": True,
+        },
+    }
+    monkeypatch.setattr(workflows, "build_model", lambda config: TinyPETCT())
+    result = workflows.run_training(config)
+    path = result["run_directory"] / "predictions_synthetic.csv"
+    exported = pd.read_csv(path, dtype={"影像组学序列号": str})
+    assert exported["影像组学序列号"].tolist() == identifiers
+    assert exported["ground truth"].tolist() == [0, 1, 0, 1]
+    assert (
+        exported["是否预测成功"].tolist()
+        == (exported["预测结果"] == exported["ground truth"]).astype(int).tolist()
+    )
+
+    import petct.models as models
+
+    monkeypatch.setattr(models, "build_model", lambda config: TinyPETCT())
+    checkpoint_config = dict(
+        config,
+        evaluate={
+            "task": "checkpoint",
+            "checkpoint": str(result["run_directory"] / "best.pt"),
+            "output": "final_metrics.json",
+            "prediction_directory": "final_predictions",
+            "save_predictions": True,
+            "save_prediction_ids": True,
+        },
+    )
+    run_evaluation(checkpoint_config)
+    final_table = pd.read_csv(
+        tmp_path / "final_predictions/synthetic.csv", dtype={"影像组学序列号": str}
+    )
+    assert final_table["影像组学序列号"].tolist() == identifiers
+    np.testing.assert_allclose(final_table["预测概率"], exported["预测概率"])
+
+    monkeypatch.setattr(two_stage, "build_model", lambda config: TinyPETCT())
+    monkeypatch.setattr(two_stage, "_tree_classifier", lambda config: LogisticRegression())
+    two_config = dict(config, output=dict(config["output"], run_name="two"))
+    two_stage.run_two_stage(two_config)
+    tree_table = pd.read_csv(
+        tmp_path / "two_two_stage/predictions_synthetic.csv", dtype={"影像组学序列号": str}
+    )
+    assert tree_table["影像组学序列号"].tolist() == identifiers
+    assert tree_table["ground truth"].tolist() == [0, 1, 0, 1]

@@ -18,12 +18,29 @@ def _prediction_columns(config: dict[str, Any]) -> tuple[str, str]:
     )
 
 
-def _read(path: str | Path, label_column: str, probability_column: str) -> tuple[Any, Any]:
-    frame = pd.read_csv(path)
+def _read(
+    path: str | Path, label_column: str, probability_column: str
+) -> tuple[Any, Any, list[str] | None]:
+    frame = pd.read_csv(path, dtype={"影像组学序列号": str}, keep_default_na=False)
+    if label_column == "label" and label_column not in frame and "ground truth" in frame:
+        label_column = "ground truth"
+    if (
+        probability_column == "probability"
+        and probability_column not in frame
+        and "预测概率" in frame
+    ):
+        probability_column = "预测概率"
     missing = {label_column, probability_column} - set(frame.columns)
     if missing:
         raise ValueError(f"Prediction file {path} is missing columns: {sorted(missing)}")
-    return frame[label_column].to_numpy(), frame[probability_column].to_numpy()
+    identifiers = None
+    if "影像组学序列号" in frame:
+        identifiers = frame["影像组学序列号"].tolist()
+        if any(not identifier.strip() for identifier in identifiers):
+            raise ValueError("Prediction identifiers must not be empty")
+        if len(set(identifiers)) != len(identifiers):
+            raise ValueError("Prediction identifiers must be unique within a cohort")
+    return frame[label_column].to_numpy(), frame[probability_column].to_numpy(), identifiers
 
 
 def _metric_record(payload: dict[str, Any]) -> dict[str, Any]:
@@ -44,7 +61,7 @@ def run_evaluation(config: dict[str, Any]) -> dict[str, Any]:
     label_column, probability_column = _prediction_columns(evaluation)
     result: dict[str, Any]
     if task in {"metrics", "youden"}:
-        labels, probabilities = _read(
+        labels, probabilities, _ = _read(
             resolve_config_path(config, evaluation["predictions"]), label_column, probability_column
         )
         if task == "youden":
@@ -71,16 +88,20 @@ def run_evaluation(config: dict[str, Any]) -> dict[str, Any]:
             ]
             result = summarize_folds(fold_metrics)
     elif task == "delong":
-        labels_a, probabilities_a = _read(
+        labels_a, probabilities_a, identifiers_a = _read(
             resolve_config_path(config, evaluation["predictions_a"]),
             label_column,
             probability_column,
         )
-        labels_b, probabilities_b = _read(
+        labels_b, probabilities_b, identifiers_b = _read(
             resolve_config_path(config, evaluation["predictions_b"]),
             label_column,
             probability_column,
         )
+        if identifiers_a != identifiers_b:
+            raise ValueError(
+                "Paired DeLong inputs must contain identical IDs in identical row order"
+            )
         if len(labels_a) != len(labels_b) or not (labels_a == labels_b).all():
             raise ValueError(
                 "Paired DeLong inputs must contain identical labels in identical row order"
@@ -90,7 +111,7 @@ def run_evaluation(config: dict[str, Any]) -> dict[str, Any]:
         import torch
 
         from .artifacts import save_predictions
-        from .data import loader_from_config
+        from .data import loader_from_config, prediction_identifiers
         from .engine import build_criterion, evaluate_loader, resolve_device
         from .models import build_model
 
@@ -118,6 +139,10 @@ def run_evaluation(config: dict[str, Any]) -> dict[str, Any]:
                     labels,
                     probabilities,
                     True,
+                    identifiers=prediction_identifiers(
+                        loader, bool(evaluation.get("save_prediction_ids", False))
+                    ),
+                    threshold=float(metrics.get("threshold", 0.5)),
                 )
     else:
         raise ValueError("evaluate.task must be metrics, youden, crossval, delong, or checkpoint")

@@ -73,9 +73,18 @@ TorchVision's weights API is used, and pretrained first-layer weights are expand
 to the required input channels.
 
 By default, a run writes `resolved_config.yaml`, `metrics.json`, `history.csv`,
-`run.log`, and a pure `best.pt` state dict. Patient IDs and per-case probabilities
-are not written. Set `output.save_predictions: true` only when anonymous paired
-prediction rows are required for statistical comparison.
+`run.log`, and a pure `best.pt` state dict. The training and two-stage server
+configurations explicitly enable final prediction CSVs with case IDs; the
+checkpoint evaluation configuration does the same. These private files are
+excluded from Git. The API remains opt-in: `save_predictions` enables export,
+and `save_prediction_ids` adds identified, five-column tables. With the latter
+disabled, exports contain only anonymous `label,probability` rows. HPO keeps
+prediction export disabled and does not access external cohorts.
+
+Identified CSV headers are `影像组学序列号`, `是否预测成功`, `预测概率`, `预测结果`,
+and `ground truth`. Probability is P(pCR=1), not confidence in the predicted
+class. Predicted class uses a fixed 0.5 threshold; correctness, prediction, and
+ground truth are numeric 0/1. Probabilities are not rounded during export.
 
 ## Reproducibility checks
 

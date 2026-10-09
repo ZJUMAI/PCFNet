@@ -11,7 +11,7 @@ import numpy as np
 import torch
 import torchio as tio
 from PIL import Image
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, SequentialSampler
 
 from petct.config import ConfigError, resolve_config_path
 from petct.metadata import (
@@ -106,6 +106,8 @@ class PETCTDataset(Dataset):
                 self.negative_values,
             )
             self.samples.append((ct_dir, pet_dir, label))
+
+        self.identifiers = [normalize_identifier(identifier) for identifier in identifiers]
 
         self.transform = tio.Compose(
             [
@@ -212,3 +214,16 @@ def loader_from_config(
         generator=torch.Generator().manual_seed(seed),
         worker_init_fn=_seed_worker,
     )
+
+
+def prediction_identifiers(loader: DataLoader, enabled: bool) -> list[str] | None:
+    """Return IDs only for complete sequential evaluation in manifest order."""
+
+    if not enabled:
+        return None
+    if not isinstance(loader.sampler, SequentialSampler) or loader.drop_last:
+        raise ConfigError("Identified predictions require a sequential loader with drop_last=False")
+    identifiers = getattr(loader.dataset, "identifiers", None)
+    if identifiers is None:
+        raise ConfigError("The evaluation dataset does not provide prediction identifiers")
+    return list(identifiers)

@@ -14,7 +14,7 @@ from .artifacts import (
     save_predictions,
     save_resolved_config,
 )
-from .data import loader_from_config
+from .data import loader_from_config, prediction_identifiers
 from .engine import fit, resolve_device, set_seed
 from .metrics import binary_metrics
 from .models import build_model
@@ -108,6 +108,11 @@ def run_two_stage(config: dict[str, Any]) -> dict[str, Any]:
         validation_labels,
         validation_probability,
         bool(output.get("save_predictions", False)),
+        identifiers=prediction_identifiers(
+            validation_loader,
+            bool(output.get("save_predictions", False))
+            and bool(output.get("save_prediction_ids", False)),
+        ),
     )
 
     # The external cohort is constructed and accessed only after both stages are fixed.
@@ -122,6 +127,11 @@ def run_two_stage(config: dict[str, Any]) -> dict[str, Any]:
             external_labels,
             external_probability,
             bool(output.get("save_predictions", False)),
+            identifiers=prediction_identifiers(
+                external_loader,
+                bool(output.get("save_predictions", False))
+                and bool(output.get("save_prediction_ids", False)),
+            ),
         )
     if external_results:
         result["external"] = external_results

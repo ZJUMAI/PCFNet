@@ -75,4 +75,5 @@ training:
 output:
   root: ../runs
   run_name: resnet_lightgbm
-  save_predictions: false
+  save_predictions: true
+  save_prediction_ids: true

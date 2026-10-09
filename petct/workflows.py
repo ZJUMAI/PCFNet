@@ -14,7 +14,7 @@ from petct.artifacts import (
     save_resolved_config,
 )
 from petct.config import ConfigError, require_sections
-from petct.data import loader_from_config
+from petct.data import loader_from_config, prediction_identifiers
 from petct.engine import evaluate_loader, fit, set_seed
 from petct.metrics import summarize_folds
 from petct.models import build_model
@@ -29,7 +29,8 @@ def _evaluate_external(
 ) -> dict[str, Any]:
     external_results: dict[str, Any] = {}
     external_config = config.get("data", {}).get("external", {})
-    save_private = bool(config.get("output", {}).get("save_predictions", False))
+    output = config.get("output", {})
+    save_private = bool(output.get("save_predictions", False))
     for cohort_name, split_config in external_config.items():
         loader = loader_from_config(config, split_config, training=False)
         metrics, labels, probabilities = evaluate_loader(model, loader, criterion, device)
@@ -39,6 +40,10 @@ def _evaluate_external(
             labels,
             probabilities,
             save_private,
+            identifiers=prediction_identifiers(
+                loader, save_private and bool(output.get("save_prediction_ids", False))
+            ),
+            threshold=float(metrics.get("threshold", 0.5)),
         )
     return external_results
 

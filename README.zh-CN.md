@@ -39,8 +39,15 @@ ID；CT/PET 根目录下必须存在同名病例目录，每个目录严格包�
 缺失模态、未知标签、重复 ID、尺寸或层数错误都会显式报错。
 
 训练集 CT/PET 通过同一个 TorchIO `Subject` 做同步空间增强；验证集和外部队列不增强。
-HPO 不会构建或访问外部队列。默认输出不含病例 ID 和逐例概率；只有显式设置
-`output.save_predictions: true` 时，才保存不带 ID 的配对预测。
+HPO 不会构建或访问外部队列，也不保存逐例预测。当前服务器训练、两阶段和单独
+checkpoint 测试配置已显式开启逐例 CSV，包含病例编号，结果文件不提交到 Git。
+公共 API 仍默认关闭导出；`save_predictions` 控制是否导出，`save_prediction_ids`
+控制是否包含编号，关闭后者时只保存匿名 `label,probability` 两列。
+
+带编号 CSV 的五列表头为“影像组学序列号”“是否预测成功”“预测概率”“预测结果”
+和 `ground truth`。“预测概率”是 pCR=1 的概率，不是预测类别的置信度；
+预测结果以固定阈值 0.5 判定，预测成功表示结果等于真实标签。这三类标志均为数值
+0/1，概率导出不进行四舍五入。
 
 预处理说明见 [preprocess/README.zh-CN.md](preprocess/README.zh-CN.md)，配置说明见
 [configs/README.zh-CN.md](configs/README.zh-CN.md)。

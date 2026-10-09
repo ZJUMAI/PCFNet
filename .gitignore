@@ -15,9 +15,10 @@ preprocess_summaries/
 *.joblib
 *.db
 
-# Anonymous predictions are opt-in and should be reviewed before sharing
+# Prediction files may contain private case IDs and must not be committed
 predictions_*.csv
 evaluation_predictions/
 
 # Locally generated patient-level split manifests
 dataset/generated_split_80_20/
+dataset/generated_splits_5fold/
