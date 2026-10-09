@@ -51,7 +51,8 @@ def test_france_external_configuration(filename: str, command: str) -> None:
     validate_config(config, command)
     assert set(config["data"]["external"]) == {"ruijin", "wuhan", "FUSCC", "SPH_test", "france"}
     france = config["data"]["external"]["france"]
-    assert france["id_column"] == "number"
+    assert config["data"]["id_column"] == "影像组学序列号"
+    assert france["id_column"] == config["data"]["id_column"]
     assert france["label_column"] == "pCR"
     assert france["metadata"].endswith("/PET_France/PETCT.xlsx")
     assert france["ct_root"].endswith("/robust_match_64_0.2_20/france/ct")
