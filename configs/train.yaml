@@ -14,19 +14,34 @@ data:
   train:
     manifest: ../dataset/train.txt
     metadata: ../data/metadata.csv
-    ct_root: ../data/images/internal/ct
-    pet_root: ../data/images/internal/pet
+    ct_root: /data4/zhenglujie/petct/clahed_64_0.2_20/sph/ct
+    pet_root: /data4/zhenglujie/petct/clahed_64_0.2_20/sph/pet
   validation:
     manifest: ../dataset/valid.txt
     metadata: ../data/metadata.csv
-    ct_root: ../data/images/internal/ct
-    pet_root: ../data/images/internal/pet
+    ct_root: /data4/zhenglujie/petct/clahed_64_0.2_20/sph/ct
+    pet_root: /data4/zhenglujie/petct/clahed_64_0.2_20/sph/pet
   external:
-    external_site:
+    ruijin:
+      manifest: ../dataset/ruijin.txt
+      metadata: ../data/external_metadata.csv
+      ct_root: /data4/zhenglujie/petct/clahed_64_0.2_20/ruijin/ct
+      pet_root: /data4/zhenglujie/petct/clahed_64_0.2_20/ruijin/pet
+    wuhan:
+      manifest: ../dataset/wuhan.txt
+      metadata: ../data/external_metadata.csv
+      ct_root: /data4/zhenglujie/petct/clahed_64_0.2_20/wuhan/ct
+      pet_root: /data4/zhenglujie/petct/clahed_64_0.2_20/wuhan/pet
+    FUSCC:
+      manifest: ../dataset/FUSCC.txt
+      metadata: ../data/external_metadata.csv
+      ct_root: /data4/zhenglujie/petct/clahed_64_0.2_20/FUSCC/ct
+      pet_root: /data4/zhenglujie/petct/clahed_64_0.2_20/FUSCC/pet
+    SPH_test:
       manifest: ../dataset/SPH_test.txt
       metadata: ../data/external_metadata.csv
-      ct_root: ../data/images/external/ct
-      pet_root: ../data/images/external/pet
+      ct_root: /data4/zhenglujie/petct/clahed_64_0.2_20/SPH_test/ct
+      pet_root: /data4/zhenglujie/petct/clahed_64_0.2_20/SPH_test/pet
 
 model:
   name: fusion3d

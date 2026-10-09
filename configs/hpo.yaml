@@ -12,13 +12,13 @@ data:
   train:
     manifest: ../dataset/train.txt
     metadata: ../data/metadata.csv
-    ct_root: ../data/images/internal/ct
-    pet_root: ../data/images/internal/pet
+    ct_root: /data4/zhenglujie/petct/clahed_64_0.2_20/sph/ct
+    pet_root: /data4/zhenglujie/petct/clahed_64_0.2_20/sph/pet
   validation:
     manifest: ../dataset/valid.txt
     metadata: ../data/metadata.csv
-    ct_root: ../data/images/internal/ct
-    pet_root: ../data/images/internal/pet
+    ct_root: /data4/zhenglujie/petct/clahed_64_0.2_20/sph/ct
+    pet_root: /data4/zhenglujie/petct/clahed_64_0.2_20/sph/pet
 
 model:
   name: fusion3d
