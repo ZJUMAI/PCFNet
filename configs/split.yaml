@@ -5,8 +5,8 @@ split:
   source_manifests:
     - ../dataset/train.txt
     - ../dataset/valid.txt
-  mode: holdout
-  validation_fraction: 0.2
+  mode: kfold
+  folds: 5
   seed: 513
-  output_directory: ../dataset/generated_split_80_20
-  filename_pattern: '{split}.txt'
+  output_directory: ../dataset/generated_splits_5fold
+  filename_pattern: 'fold_{fold}_{split}.txt'

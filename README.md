@@ -24,14 +24,20 @@ scientific Python stack. Optuna and boosted-tree libraries are optional extras.
 ## Commands
 
 ```bash
+python -m petct split --config configs/split.yaml
 python -m petct train --config configs/train.yaml
 python -m petct hpo --config configs/hpo.yaml
 python -m petct crossval --config configs/compare.yaml
 python -m petct two-stage --config configs/two_stage.yaml
 python -m petct preprocess all --config configs/preprocess.yaml
 python -m petct evaluate --config configs/evaluate.yaml
-python -m petct split --config configs/split.yaml
 ```
+
+Splitting and cross-validation default to five stratified folds (approximately
+80% training / 20% validation per fold). Run `split` first to generate
+`dataset/generated_splits_5fold`, then `crossval` to train all five folds.
+The single-run `train`, `hpo`, and `two-stage` configurations use fold 1 by
+default. See the configuration guide for five-fold training of the main model.
 
 Any YAML value can be overridden without editing the file:
 

@@ -71,7 +71,7 @@ def run_split(config: dict[str, Any]) -> dict[str, Any]:
                 "negative": int((labels[indices] == 0).sum()),
             }
     elif mode == "kfold":
-        folds = int(settings.get("folds", 10))
+        folds = int(settings.get("folds", 5))
         splitter = StratifiedKFold(n_splits=folds, shuffle=True, random_state=seed)
         splits = list(splitter.split(identifiers, labels))
         pattern = str(settings.get("filename_pattern", "fold_{fold}_{split}.txt"))

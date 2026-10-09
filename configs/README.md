@@ -44,21 +44,43 @@ France 的 40 例名单已启用，单独使用 `PET_France/PETCT.xlsx`，编号
 Use YAML-native values in overrides. For example, `--set model.params.pretrained=false`
 is a Boolean while `--set training.batch_size=4` is an integer.
 
-`split.yaml` defaults to a stratified 80% training / 20% validation holdout with
-seed 513. `source_manifests` combines the original `dataset/train.txt` and
-`dataset/valid.txt` into the eligible case list; labels are read directly from
-the original SPH radiomics XLSX. Table rows outside this list are excluded.
-The same label-table path and column names are used for training. Keep external
-test cohorts separate. Run `python -m petct split --config configs/split.yaml` before
-`python -m petct train --config configs/train.yaml`.
+`split.yaml` defaults to stratified five-fold cross-validation with seed 513.
+Each fold uses approximately 80% of cases for training and 20% for validation;
+every case appears in exactly one validation fold. `source_manifests` combines
+the original `dataset/train.txt` and `dataset/valid.txt` into the eligible case
+list. Labels are read directly from the SPH radiomics XLSX; table rows outside
+this list and all external test cohorts are excluded.
 
-The training configuration uses the resulting `train.txt` and `validation.txt`
-in `dataset/generated_split_80_20`. An anonymous `summary.json` records each
-subset's size and class counts. Integer rounding can slightly change the ratio.
-Validation is used for checkpoint selection and early stopping.
+Generate the manifests, then run all five folds:
 
-For the existing cross-validation workflow, use `split.mode: kfold`,
-`split.folds: 10`, `split.output_directory: ../dataset/generated_splits`, and
-`split.filename_pattern: 'fold_{fold}_{split}.txt'`, and point the cross-validation
-configuration at those manifests. Configurations without a mode retain k-fold
-behavior.
+```bash
+python -m petct split --config configs/split.yaml
+python -m petct crossval --config configs/compare.yaml
+```
+
+The generated directory is `dataset/generated_splits_5fold`, containing
+`fold_1_train.txt` / `fold_1_validation.txt` through
+`fold_5_train.txt` / `fold_5_validation.txt`, plus an anonymous `summary.json`.
+`compare.yaml` reads these templates and runs five folds. Both the splitter and
+cross-validation runner also default to five folds when no fold count is given.
+Integer rounding can slightly change each fold's 80:20 ratio.
+
+The single-run commands `train`, `hpo`, and `two-stage` read fold 1 by default;
+they do not automatically run all five folds. Override both manifest paths to
+select another fold. HPO remains validation-only and does not access external
+cohorts. Validation is used for checkpoint selection and early stopping.
+
+To run the main model across all five folds, use its training configuration with
+fold-template overrides:
+
+```bash
+python -m petct crossval --config configs/train.yaml \
+  --set 'data.train.manifest=../dataset/generated_splits_5fold/fold_{fold}_train.txt' \
+  --set 'data.validation.manifest=../dataset/generated_splits_5fold/fold_{fold}_validation.txt' \
+  --set output.run_name=fusion3d_crossval
+```
+
+A single holdout remains available only by explicitly setting `split.mode:
+holdout`, `split.validation_fraction: 0.2`, a separate output directory, and
+`split.filename_pattern: '{split}.txt'`. Point single-run training configurations
+to those holdout files when using this optional mode.

@@ -54,21 +54,49 @@ def test_holdout_is_stratified_disjoint_complete_and_reproducible(tmp_path: Path
     assert _ids(validation_path) == validation
 
 
-def test_configs_without_mode_keep_kfold_behavior(tmp_path: Path) -> None:
+def test_configs_without_mode_or_fold_count_default_to_five_folds(tmp_path: Path) -> None:
     config = _config(tmp_path)
     config["split"].pop("mode")
-    config["split"]["folds"] = 10
     summary = run_split(config)
-    assert summary["folds"] == 10
+    assert summary["folds"] == 5
     validation_ids = []
-    for fold in range(1, 11):
+    for fold in range(1, 6):
         train = _ids(tmp_path / f"splits/fold_{fold}_train.txt")
         validation = _ids(tmp_path / f"splits/fold_{fold}_validation.txt")
-        assert len(train) == 90
-        assert len(validation) == 10
+        assert len(train) == 80
+        assert len(validation) == 20
         assert set(train).isdisjoint(validation)
+        assert set(train) | set(validation) == {f"case_{i:03d}" for i in range(100)}
+        frame = pd.read_csv(tmp_path / "metadata.csv").set_index("patient_id")
+        assert frame.loc[train, "label"].sum() == 24
+        assert frame.loc[validation, "label"].sum() == 6
         validation_ids.extend(validation)
     assert len(set(validation_ids)) == len(validation_ids) == 100
+
+
+def test_explicit_fold_count_remains_configurable(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    config["split"].update(mode="kfold", folds=4)
+    assert run_split(config)["folds"] == 4
+    assert len(list((tmp_path / "splits").glob("fold_*_validation.txt"))) == 4
+
+
+def test_default_split_yaml_generates_five_folds(tmp_path: Path) -> None:
+    _config(tmp_path)
+    root = Path(__file__).resolve().parents[1]
+    config = load_config(root / "configs/split.yaml")
+    config["split"].update(
+        metadata=str(tmp_path / "metadata.csv"),
+        id_column="patient_id",
+        label_column="label",
+        source_manifests=None,
+        output_directory=str(tmp_path / "generated"),
+    )
+    assert run_split(config)["folds"] == 5
+    assert len(list((tmp_path / "generated").glob("*.txt"))) == 10
+    for fold in range(1, 6):
+        assert len(_ids(tmp_path / f"generated/fold_{fold}_train.txt")) == 80
+        assert len(_ids(tmp_path / f"generated/fold_{fold}_validation.txt")) == 20
 
 
 def test_source_manifests_restrict_split_to_existing_cohort(tmp_path: Path) -> None:
@@ -152,12 +180,24 @@ def test_split_cli_runs_without_importing_training(tmp_path: Path) -> None:
     assert len(_ids(tmp_path / "splits/validation.txt")) == 20
 
 
-def test_example_training_uses_holdout_output_paths() -> None:
+def test_example_configurations_use_generated_five_fold_paths() -> None:
     root = Path(__file__).resolve().parents[1]
     split = load_config(root / "configs/split.yaml")
-    train = load_config(root / "configs/train.yaml")
     output = resolve_config_path(split, split["split"]["output_directory"])
-    assert split["split"]["mode"] == "holdout"
-    assert split["split"]["validation_fraction"] == 0.2
-    for name in ("train", "validation"):
-        assert resolve_config_path(train, train["data"][name]["manifest"]) == output / f"{name}.txt"
+    assert split["split"]["mode"] == "kfold"
+    assert split["split"]["folds"] == 5
+    pattern = split["split"]["filename_pattern"]
+    compare = load_config(root / "configs/compare.yaml")
+    assert compare["cross_validation"]["folds"] == 5
+    for fold in range(1, 6):
+        for name in ("train", "validation"):
+            manifest = compare["data"][name]["manifest"].format(fold=fold)
+            assert resolve_config_path(compare, manifest) == output / pattern.format(
+                fold=fold, split=name
+            )
+    for filename in ("train.yaml", "hpo.yaml", "two_stage.yaml"):
+        config = load_config(root / "configs" / filename)
+        for name in ("train", "validation"):
+            assert resolve_config_path(config, config["data"][name]["manifest"]) == (
+                output / pattern.format(fold=1, split=name)
+            )

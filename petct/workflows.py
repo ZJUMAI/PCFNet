@@ -106,7 +106,7 @@ def run_cross_validation(config: dict[str, Any]) -> dict[str, Any]:
     """Run the registered model through identical sequential folds."""
 
     crossval = config.get("cross_validation", {})
-    folds = int(crossval.get("folds", 10))
+    folds = int(crossval.get("folds", 5))
     root_directory = prepare_run_directory(config)
     save_resolved_config(config, root_directory)
     fold_results: list[dict[str, Any]] = []

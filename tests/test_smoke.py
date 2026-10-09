@@ -28,6 +28,33 @@ class TinyPETCT(torch.nn.Module):
         return self.classifier(self.extract_features(ct, pet))
 
 
+@pytest.mark.parametrize("settings, expected", [(None, 5), ({}, 5), ({"folds": 3}, 3)])
+def test_cross_validation_default_fold_count(tmp_path: Path, monkeypatch, settings, expected):
+    config = {
+        "data": {
+            "train": {"manifest": "fold_{fold}_train.txt"},
+            "validation": {"manifest": "fold_{fold}_validation.txt"},
+        },
+    }
+    if settings is not None:
+        config["cross_validation"] = settings
+    calls = []
+
+    def mock_training(fold_config, *, run_directory):
+        calls.append((fold_config, run_directory))
+        return {"results": {"validation": {"auc": 0.75}}}
+
+    monkeypatch.setattr(workflows, "prepare_run_directory", lambda config: tmp_path)
+    monkeypatch.setattr(workflows, "run_training", mock_training)
+    result = workflows.run_cross_validation(config)
+    assert len(result["folds"]) == len(calls) == expected
+    for fold, (fold_config, directory) in enumerate(calls, start=1):
+        assert fold_config["data"]["train"]["manifest"] == f"fold_{fold}_train.txt"
+        assert fold_config["data"]["validation"]["manifest"] == f"fold_{fold}_validation.txt"
+        assert directory == tmp_path / f"fold_{fold}"
+    assert config["data"]["train"]["manifest"] == "fold_{fold}_train.txt"
+
+
 def _images(root: Path, identifiers: list[str], offset: int) -> None:
     for position, identifier in enumerate(identifiers):
         directory = root / identifier

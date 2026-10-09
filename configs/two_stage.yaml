@@ -10,12 +10,12 @@ data:
   strict_slice_count: true
   augment_probability: 0.5
   train:
-    manifest: ../dataset/train.txt
+    manifest: ../dataset/generated_splits_5fold/fold_1_train.txt
     metadata: /data4/zhenglujie/petct/PET_SPH_training_2025-4-8/PET_SPH_radiomics-2025-8-14.xlsx
     ct_root: /data4/zhenglujie/petct/clahed_64_0.2_20/sph/ct
     pet_root: /data4/zhenglujie/petct/clahed_64_0.2_20/sph/pet
   validation:
-    manifest: ../dataset/valid.txt
+    manifest: ../dataset/generated_splits_5fold/fold_1_validation.txt
     metadata: /data4/zhenglujie/petct/PET_SPH_training_2025-4-8/PET_SPH_radiomics-2025-8-14.xlsx
     ct_root: /data4/zhenglujie/petct/clahed_64_0.2_20/sph/ct
     pet_root: /data4/zhenglujie/petct/clahed_64_0.2_20/sph/pet

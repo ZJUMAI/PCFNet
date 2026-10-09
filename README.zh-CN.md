@@ -13,6 +13,7 @@ Lung Cancer”** 的官方代码仓库。
 ```bash
 python -m venv .venv
 python -m pip install -e ".[dev,hpo,two-stage]"
+python -m petct split --config configs/split.yaml
 python -m petct train --config configs/train.yaml
 python -m petct hpo --config configs/hpo.yaml
 python -m petct crossval --config configs/compare.yaml
@@ -20,6 +21,11 @@ python -m petct two-stage --config configs/two_stage.yaml
 python -m petct preprocess all --config configs/preprocess.yaml
 python -m petct evaluate --config configs/evaluate.yaml
 ```
+
+默认划分与交叉验证均为分层五折，每折约 80% 训练、20% 验证。先运行 `split`
+生成 `dataset/generated_splits_5fold` 名单，再运行 `crossval` 完成五折训练。
+`train`、`hpo`、`two-stage` 仍为单次运行，默认读取第 1 折。
+主模型五折运行方式见配置说明。
 
 可重复使用 `--set key=value` 覆盖 YAML，例如
 `--set training.optimizer.learning_rate=0.0002`。根目录原训练脚本仅为统一 API 的薄入口。
