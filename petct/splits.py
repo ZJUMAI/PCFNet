@@ -8,7 +8,7 @@ from typing import Any
 import numpy as np
 from sklearn.model_selection import StratifiedKFold, train_test_split
 
-from .config import resolve_config_path
+from .config import ConfigError, resolve_config_path
 from .metadata import load_metadata, parse_binary_label
 
 
@@ -18,6 +18,27 @@ def run_split(config: dict[str, Any]) -> dict[str, Any]:
     id_column = str(settings["id_column"])
     label_column = str(settings["label_column"])
     frame = load_metadata(metadata_path, id_column, label_column)
+    source_manifests = settings.get("source_manifests")
+    if source_manifests is not None:
+        if not isinstance(source_manifests, list) or not source_manifests:
+            raise ConfigError("split.source_manifests must be a non-empty list")
+        identifiers = []
+        seen = set()
+        for manifest in source_manifests:
+            path = resolve_config_path(config, manifest)
+            for identifier in path.read_text(encoding="utf-8").splitlines():
+                identifier = identifier.strip()
+                if identifier and identifier not in seen:
+                    identifiers.append(identifier)
+                    seen.add(identifier)
+        if not identifiers:
+            raise ConfigError("split.source_manifests contain no case IDs")
+        missing = seen - set(frame.index)
+        if missing:
+            raise ConfigError(
+                f"{len(missing)} source-manifest cases are absent from the label table"
+            )
+        frame = frame.loc[identifiers]
     labels = frame[label_column].map(parse_binary_label).to_numpy()
     identifiers = frame.index.to_numpy()
     mode = str(settings.get("mode", "kfold"))

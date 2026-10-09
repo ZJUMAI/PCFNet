@@ -2,30 +2,30 @@ seed: 513
 device: auto
 
 data:
-  id_column: patient_id
-  label_column: label
+  id_column: 影像组学序列号
+  label_column: pCR
   depth: 64
   image_size: 64
   strict_slice_count: true
   external:
     ruijin:
       manifest: ../dataset/ruijin.txt
-      metadata: ../data/external_metadata.csv
+      metadata: /data4/zhenglujie/petct/External_validation_PET_2025-4-8/PET_External_radiomics-2025-4-8.xlsx
       ct_root: /data4/zhenglujie/petct/clahed_64_0.2_20/ruijin/ct
       pet_root: /data4/zhenglujie/petct/clahed_64_0.2_20/ruijin/pet
     wuhan:
       manifest: ../dataset/wuhan.txt
-      metadata: ../data/external_metadata.csv
+      metadata: /data4/zhenglujie/petct/External_validation_PET_2025-4-8/PET_External_radiomics-2025-4-8.xlsx
       ct_root: /data4/zhenglujie/petct/clahed_64_0.2_20/wuhan/ct
       pet_root: /data4/zhenglujie/petct/clahed_64_0.2_20/wuhan/pet
     FUSCC:
       manifest: ../dataset/FUSCC.txt
-      metadata: ../data/external_metadata.csv
+      metadata: /data4/zhenglujie/petct/External_Validation_PET_2025_5_9/PET_External_radiomics-2025-5-9.xlsx
       ct_root: /data4/zhenglujie/petct/clahed_64_0.2_20/FUSCC/ct
       pet_root: /data4/zhenglujie/petct/clahed_64_0.2_20/FUSCC/pet
     SPH_test:
       manifest: ../dataset/SPH_test.txt
-      metadata: ../data/external_metadata.csv
+      metadata: /data4/zhenglujie/petct/External_Validation_PET_2025_5_9/PET_External_radiomics-2025-5-9.xlsx
       ct_root: /data4/zhenglujie/petct/clahed_64_0.2_20/SPH_test/ct
       pet_root: /data4/zhenglujie/petct/clahed_64_0.2_20/SPH_test/pet
 

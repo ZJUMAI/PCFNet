@@ -3,20 +3,20 @@ deterministic: true
 device: auto
 
 data:
-  id_column: patient_id
-  label_column: label
+  id_column: 影像组学序列号
+  label_column: pCR
   depth: 64
   image_size: 64
   strict_slice_count: true
   augment_probability: 0.5
   train:
     manifest: ../dataset/train.txt
-    metadata: ../data/metadata.csv
+    metadata: /data4/zhenglujie/petct/PET_SPH_training_2025-4-8/PET_SPH_radiomics-2025-4-8.xlsx
     ct_root: /data4/zhenglujie/petct/clahed_64_0.2_20/sph/ct
     pet_root: /data4/zhenglujie/petct/clahed_64_0.2_20/sph/pet
   validation:
     manifest: ../dataset/valid.txt
-    metadata: ../data/metadata.csv
+    metadata: /data4/zhenglujie/petct/PET_SPH_training_2025-4-8/PET_SPH_radiomics-2025-4-8.xlsx
     ct_root: /data4/zhenglujie/petct/clahed_64_0.2_20/sph/ct
     pet_root: /data4/zhenglujie/petct/clahed_64_0.2_20/sph/pet
 

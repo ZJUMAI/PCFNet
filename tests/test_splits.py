@@ -71,6 +71,30 @@ def test_configs_without_mode_keep_kfold_behavior(tmp_path: Path) -> None:
     assert len(set(validation_ids)) == len(validation_ids) == 100
 
 
+def test_source_manifests_restrict_split_to_existing_cohort(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    train_ids = [f"case_{i:03d}" for i in range(0, 100, 2)]
+    first, second = train_ids[:25], train_ids[25:]
+    (tmp_path / "existing_train.txt").write_text("\n".join(first) + "\n", encoding="utf-8")
+    (tmp_path / "existing_valid.txt").write_text("\n".join(second) + "\n", encoding="utf-8")
+    config["split"]["source_manifests"] = ["existing_train.txt", "existing_valid.txt"]
+    summary = run_split(config)
+    selected = _ids(tmp_path / "splits/train.txt") + _ids(tmp_path / "splits/validation.txt")
+    assert set(selected) == set(train_ids)
+    assert len(selected) == summary["cases"] == 50
+    assert summary["train"]["cases"] == 40
+    assert summary["validation"]["cases"] == 10
+
+
+def test_missing_source_manifest_labels_fail_before_writing(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    (tmp_path / "existing.txt").write_text("missing_case\n", encoding="utf-8")
+    config["split"]["source_manifests"] = ["existing.txt"]
+    with pytest.raises(ConfigError, match="absent"):
+        run_split(config)
+    assert not (tmp_path / "splits").exists()
+
+
 @pytest.mark.parametrize("fraction", [0, 1, -0.2, 1.2])
 def test_invalid_holdout_ratio_creates_no_outputs(tmp_path: Path, fraction: float) -> None:
     config = _config(tmp_path)

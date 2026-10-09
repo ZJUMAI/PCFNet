@@ -6,8 +6,8 @@ Non-Small Cell Lung Cancer.”**
 
 This repository contains the reproducible training and preprocessing code for a
 multimodal PET/CT binary-classification study. Python 3.10 or newer is required.
-The public code deliberately excludes metadata, images, patient-level results,
-legacy checkpoints, and private absolute paths.
+The public code deliberately excludes label-table contents, images, patient-level
+results, and legacy checkpoints. Server data paths are configured in YAML.
 
 Chinese documentation: [README.zh-CN.md](README.zh-CN.md)
 
@@ -47,7 +47,10 @@ use `configs/evaluate.yaml` for the separate final checkpoint evaluation.
 
 ## Data contract
 
-Metadata may be CSV or XLSX. Configure its ID and binary-label columns in YAML.
+The `metadata` setting can point directly to an existing CSV or XLSX label table;
+no additional metadata file or conversion to CSV is required. Server YAML files
+reuse the original radiomics XLSX tables, with `影像组学序列号` as the ID column
+and `pCR` as the outcome. Clinical and radiomics feature columns are not used.
 Manifests contain one case ID per line. Each configured CT and PET root must have
 matching case directories with exactly 64 naturally sorted grayscale slices of
 64 x 64 pixels. Missing modalities, unknown labels, duplicate IDs, invalid image

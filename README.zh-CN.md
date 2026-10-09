@@ -5,7 +5,8 @@ Pathological Complete Response to Neoadjuvant Chemoimmunotherapy in Non-Small Ce
 Lung Cancer”** 的官方代码仓库。
 
 本仓库提供多模态 PET/CT 二分类研究的可复现实验代码，要求 Python 3.10+。
-公开仓库不包含 metadata、医学影像、患者级结果、旧 checkpoint 或私有绝对路径。
+公开仓库不包含标签表内容、医学影像、患者级结果或旧 checkpoint，服务器数据路径
+由 YAML 配置。
 
 ## 安装与运行
 
@@ -25,7 +26,9 @@ python -m petct evaluate --config configs/evaluate.yaml
 
 ## 数据与隐私约束
 
-metadata 支持 CSV/XLSX，ID 列和二分类标签列由 YAML 指定。manifest 每行一个病例
+`metadata` 直接指向已有 CSV/XLSX 标签表，不要求另建文件或转成 CSV。服务器配置
+已复用旧项目 radiomics Excel，ID 列为“影像组学序列号”，标签列为 `pCR`；临床和
+radiomics 特征列不参与训练。manifest 每行一个病例
 ID；CT/PET 根目录下必须存在同名病例目录，每个目录严格包含 64 张 64×64 灰度图。
 缺失模态、未知标签、重复 ID、尺寸或层数错误都会显式报错。
 

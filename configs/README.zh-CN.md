@@ -1,7 +1,9 @@
 # 配置说明
 
 所有相对路径均以 YAML 文件所在目录为基准。使用前请复制示例并指向本地未纳入版本
-控制的数据，切勿提交 metadata。
+控制的数据，切勿提交标签表。服务器配置已直接指向旧项目原有的 radiomics Excel；
+`metadata` 只是这张已有标签表的路径，不需要另建 `metadata.csv`。
+ID 列为“影像组学序列号”，标签列为 `pCR`，程序只使用这两列。
 
 - `data`：metadata 列、体数据形状、增强参数及各数据划分路径；`external` 是命名队列。
 - `model`：模型注册名和构造参数。
@@ -14,8 +16,10 @@
 `--set` 使用 YAML 类型解析，例如 `--set model.params.pretrained=false` 是布尔值。
 
 `split.yaml` 默认按标签分层生成 80% 训练、20% 验证名单，随机种子为 513。
-`split.metadata` 必须指向仅包含待划分内部队列的 CSV/XLSX（含 ID 和二分类标签），
-不要将外部测试队列加入该文件。先运行：
+`split.metadata` 直接读取原 SPH radiomics Excel。`source_manifests` 合并已有
+`dataset/train.txt` 和 `dataset/valid.txt`，限定本次重新划分的病例范围，表内其他
+病例不参与划分。分层划分需要 `pCR` 标签，不需要新建 CSV，也不要加入外部队列。
+先运行：
 
 ```bash
 python -m petct split --config configs/split.yaml

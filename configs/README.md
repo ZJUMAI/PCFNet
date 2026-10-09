@@ -1,7 +1,10 @@
 # Configuration Guide
 
-All relative paths are resolved from the YAML file's directory. Copy an example
-before use and point it at local, non-versioned data. Do not commit metadata.
+All relative paths are resolved from the YAML file's directory. The server
+configurations use the existing radiomics XLSX label tables; `metadata` is the
+path to that existing table, not an additional file you need to create. The ID
+column is `影像组学序列号` and the outcome column is `pCR`. Only these two columns
+are used. Do not commit the label tables.
 
 - `data`: metadata schema, volume shape, augmentation, and split-specific
   manifests/CT/PET roots. `external` is a named cohort mapping.
@@ -17,9 +20,11 @@ Use YAML-native values in overrides. For example, `--set model.params.pretrained
 is a Boolean while `--set training.batch_size=4` is an integer.
 
 `split.yaml` defaults to a stratified 80% training / 20% validation holdout with
-seed 513. Its metadata must contain only the internal cohort to be split, with
-the same metadata path and column names used for training. Keep external test
-cohorts separate. Run `python -m petct split --config configs/split.yaml` before
+seed 513. `source_manifests` combines the original `dataset/train.txt` and
+`dataset/valid.txt` into the eligible case list; labels are read directly from
+the original SPH radiomics XLSX. Table rows outside this list are excluded.
+The same label-table path and column names are used for training. Keep external
+test cohorts separate. Run `python -m petct split --config configs/split.yaml` before
 `python -m petct train --config configs/train.yaml`.
 
 The training configuration uses the resulting `train.txt` and `validation.txt`
