@@ -14,9 +14,10 @@ The server label tables are:
 - External France: `/data4/zhenglujie/petct/PET_France/PETCT.xlsx`, with `id_column: 影像组学序列号` and `label_column: pCR`.
 
 `dataset/france.txt` retains the 40-case France cohort, enabled in `train.yaml`,
-`two_stage.yaml`, and `evaluate.yaml`. Its paired image roots remain
-`/data4/zhenglujie/petct/robust_match_64_0.2_20/france/ct` and
-`/data4/zhenglujie/petct/robust_match_64_0.2_20/france/pet`, as in the old project.
+`two_stage.yaml`, and `evaluate.yaml`. Its paired image roots are
+`/data4/zhenglujie/petct/clahed_64_0.2_20/france/ct` and
+`/data4/zhenglujie/petct/clahed_64_0.2_20/france/pet`, using the same processed
+data root as the other cohorts.
 France uses its own label table, not the table shared by the other four cohorts.
 All label tables must contain `影像组学序列号` values matching the manifests and
 case-directory names. A legacy France table using `number` must be updated
@@ -26,7 +27,7 @@ access them.
 
 中文说明：内部 SPH 使用上述内部标签表，四个外部队列共用上述外部标签表。
 France 的 40 例名单已启用，单独使用 `PET_France/PETCT.xlsx`，编号列为
-`影像组学序列号`、标签列为 `pCR`；CT/PET 保留旧项目的 `robust_match_64_0.2_20` 路径。
+`影像组学序列号`、标签列为 `pCR`；CT/PET 与其他队列统一使用 `clahed_64_0.2_20` 路径。
 标签表中的编号须与名单及病例目录一致。旧 France 表若只有 `number` 列，
 须先更新为统一列名；代码不自动回退到其他编号列。
 外部队列仅在模型选择结束后评估，不参与 HPO。

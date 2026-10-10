@@ -45,8 +45,8 @@ data:
       metadata: /data4/zhenglujie/petct/PET_France/PETCT.xlsx
       id_column: 影像组学序列号
       label_column: pCR
-      ct_root: /data4/zhenglujie/petct/robust_match_64_0.2_20/france/ct
-      pet_root: /data4/zhenglujie/petct/robust_match_64_0.2_20/france/pet
+      ct_root: /data4/zhenglujie/petct/clahed_64_0.2_20/france/ct
+      pet_root: /data4/zhenglujie/petct/clahed_64_0.2_20/france/pet
 
 model:
   name: feature_extractor

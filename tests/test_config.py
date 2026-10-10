@@ -55,8 +55,13 @@ def test_france_external_configuration(filename: str, command: str) -> None:
     assert france["id_column"] == config["data"]["id_column"]
     assert france["label_column"] == "pCR"
     assert france["metadata"].endswith("/PET_France/PETCT.xlsx")
-    assert france["ct_root"].endswith("/robust_match_64_0.2_20/france/ct")
-    assert france["pet_root"].endswith("/robust_match_64_0.2_20/france/pet")
+    assert france["ct_root"].endswith("/clahed_64_0.2_20/france/ct")
+    assert france["pet_root"].endswith("/clahed_64_0.2_20/france/pet")
+    for name, cohort in config["data"]["external"].items():
+        for modality in ("ct", "pet"):
+            assert cohort[f"{modality}_root"] == (
+                f"/data4/zhenglujie/petct/clahed_64_0.2_20/{name}/{modality}"
+            )
     manifest = resolve_config_path(config, france["manifest"])
     assert manifest.name == "france.txt"
     assert manifest.is_file()
