@@ -14,6 +14,7 @@ from sklearn.linear_model import LogisticRegression
 import petct.two_stage as two_stage
 import petct.workflows as workflows
 from petct.evaluation import run_evaluation
+from petct.metrics import binary_metrics
 
 
 class TinyPETCT(torch.nn.Module):
@@ -148,7 +149,10 @@ def test_cpu_micro_end_to_end_workflows(tmp_path: Path, monkeypatch) -> None:
     assert "auc" in evaluation
 
 
-def test_final_external_predictions_and_checkpoint_export(tmp_path: Path, monkeypatch) -> None:
+@pytest.mark.parametrize("grouped", [False, True])
+def test_final_external_predictions_and_checkpoint_export(
+    tmp_path: Path, monkeypatch, grouped
+) -> None:
     identifiers = ["003", "001", "002", "004"]
     _images(tmp_path / "ct", identifiers, 10)
     _images(tmp_path / "pet", identifiers, 20)
@@ -162,6 +166,19 @@ def test_final_external_predictions_and_checkpoint_export(tmp_path: Path, monkey
         "ct_root": "ct",
         "pet_root": "pet",
     }
+    cohort_name = "multi_hospital" if grouped else "synthetic"
+    external_source = split
+    if grouped:
+        members = {}
+        for hospital, cases in zip(
+            ("wuhan", "ruijin", "FUSCC"),
+            (identifiers[:2], identifiers[2:3], identifiers[3:]),
+            strict=True,
+        ):
+            manifest = f"{hospital}.txt"
+            (tmp_path / manifest).write_text("\n".join(cases), encoding="utf-8")
+            members[hospital] = dict(split, manifest=manifest)
+        external_source = {"members": members}
     config = {
         "_meta": {"config_dir": str(tmp_path)},
         "device": "cpu",
@@ -172,7 +189,7 @@ def test_final_external_predictions_and_checkpoint_export(tmp_path: Path, monkey
             "image_size": 8,
             "train": split,
             "validation": split,
-            "external": {"synthetic": split},
+            "external": {cohort_name: external_source},
         },
         "model": {"name": "tiny", "params": {}},
         "training": {
@@ -190,10 +207,13 @@ def test_final_external_predictions_and_checkpoint_export(tmp_path: Path, monkey
     }
     monkeypatch.setattr(workflows, "build_model", lambda config: TinyPETCT())
     result = workflows.run_training(config)
-    path = result["run_directory"] / "predictions_synthetic.csv"
+    assert set(result["results"]["external"]) == {cohort_name}
+    path = result["run_directory"] / f"predictions_{cohort_name}.csv"
     exported = pd.read_csv(path, dtype={"影像组学序列号": str})
     assert exported["影像组学序列号"].tolist() == identifiers
     assert exported["ground truth"].tolist() == [0, 1, 0, 1]
+    expected_auc = binary_metrics(exported["ground truth"], exported["预测概率"])["auc"]
+    assert result["results"]["external"][cohort_name]["auc"] == pytest.approx(expected_auc)
     assert (
         exported["是否预测成功"].tolist()
         == (exported["预测结果"] == exported["ground truth"]).astype(int).tolist()
@@ -215,7 +235,7 @@ def test_final_external_predictions_and_checkpoint_export(tmp_path: Path, monkey
     )
     run_evaluation(checkpoint_config)
     final_table = pd.read_csv(
-        tmp_path / "final_predictions/synthetic.csv", dtype={"影像组学序列号": str}
+        tmp_path / f"final_predictions/{cohort_name}.csv", dtype={"影像组学序列号": str}
     )
     assert final_table["影像组学序列号"].tolist() == identifiers
     np.testing.assert_allclose(final_table["预测概率"], exported["预测概率"])
@@ -223,9 +243,11 @@ def test_final_external_predictions_and_checkpoint_export(tmp_path: Path, monkey
     monkeypatch.setattr(two_stage, "build_model", lambda config: TinyPETCT())
     monkeypatch.setattr(two_stage, "_tree_classifier", lambda config: LogisticRegression())
     two_config = dict(config, output=dict(config["output"], run_name="two"))
-    two_stage.run_two_stage(two_config)
+    tree_result = two_stage.run_two_stage(two_config)
     tree_table = pd.read_csv(
-        tmp_path / "two_two_stage/predictions_synthetic.csv", dtype={"影像组学序列号": str}
+        tmp_path / f"two_two_stage/predictions_{cohort_name}.csv", dtype={"影像组学序列号": str}
     )
     assert tree_table["影像组学序列号"].tolist() == identifiers
     assert tree_table["ground truth"].tolist() == [0, 1, 0, 1]
+    expected_tree_auc = binary_metrics(tree_table["ground truth"], tree_table["预测概率"])["auc"]
+    assert tree_result["external"][cohort_name]["auc"] == pytest.approx(expected_tree_auc)

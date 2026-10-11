@@ -11,9 +11,9 @@ import numpy as np
 import torch
 import torchio as tio
 from PIL import Image
-from torch.utils.data import DataLoader, Dataset, SequentialSampler
+from torch.utils.data import ConcatDataset, DataLoader, Dataset, SequentialSampler
 
-from petct.config import ConfigError, resolve_config_path
+from petct.config import ConfigError, resolve_config_path, validate_split_config
 from petct.metadata import (
     DEFAULT_NEGATIVE_VALUES,
     DEFAULT_POSITIVE_VALUES,
@@ -168,10 +168,30 @@ class PETCTDataset(Dataset):
         }
 
 
+class CombinedPETCTDataset(ConcatDataset):
+    """Concatenate evaluation cohorts while preserving source order and case IDs."""
+
+    def __init__(self, datasets: list[PETCTDataset]):
+        super().__init__(datasets)
+        self.identifiers = [
+            identifier for dataset in datasets for identifier in dataset.identifiers
+        ]
+        if len(set(self.identifiers)) != len(self.identifiers):
+            raise ConfigError("Combined cohort contains duplicate case IDs across member hospitals")
+
+
 def dataset_from_config(
     root_config: dict[str, Any], split_config: dict[str, Any], *, training: bool
-) -> PETCTDataset:
-    """Construct a dataset from a split configuration."""
+) -> PETCTDataset | CombinedPETCTDataset:
+    """Construct a single source or concatenate a named evaluation group."""
+
+    validate_split_config(split_config, "data source", allow_groups=not training)
+    if "members" in split_config:
+        datasets = [
+            dataset_from_config(root_config, member, training=False)
+            for member in split_config["members"].values()
+        ]
+        return CombinedPETCTDataset(datasets)
 
     data_defaults = root_config.get("data", {})
     kwargs = {

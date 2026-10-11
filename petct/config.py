@@ -66,22 +66,46 @@ def require_sections(config: dict[str, Any], *sections: str) -> None:
         raise ConfigError(f"Missing required configuration sections: {', '.join(missing)}")
 
 
+def validate_split_config(
+    split_config: dict[str, Any], location: str, *, allow_groups: bool = False
+) -> None:
+    """Validate a paired data source or a named group of paired sources."""
+
+    if not isinstance(split_config, dict):
+        raise ConfigError(f"{location} must be a mapping")
+    if "members" in split_config:
+        if not allow_groups:
+            raise ConfigError(f"{location}: grouped cohorts are only supported for evaluation")
+        members = split_config["members"]
+        if not isinstance(members, dict) or not members:
+            raise ConfigError(f"{location}.members must be a non-empty named mapping")
+        if any(key in split_config for key in ("manifest", "metadata", "ct_root", "pet_root")):
+            raise ConfigError(f"{location} cannot mix group members with single-source paths")
+        for name, member in members.items():
+            validate_split_config(member, f"{location}.members.{name}")
+        return
+    missing = [
+        key for key in ("manifest", "metadata", "ct_root", "pet_root") if not split_config.get(key)
+    ]
+    if missing:
+        raise ConfigError(f"{location} is missing keys: {', '.join(missing)}")
+
+
+def _validate_external_config(config: dict[str, Any]) -> None:
+    external = config.get("data", {}).get("external", {})
+    if not isinstance(external, dict):
+        raise ConfigError("data.external must be a named cohort mapping")
+    for name, split_config in external.items():
+        validate_split_config(split_config, f"data.external.{name}", allow_groups=True)
+
+
 def validate_config(config: dict[str, Any], command: str) -> None:
     """Validate the command-level YAML contract before expensive work begins."""
 
     if command in {"train", "hpo", "crossval", "two-stage"}:
         require_sections(config, "data", "model", "training", "output")
         for split in ("train", "validation"):
-            split_config = config["data"].get(split)
-            if not isinstance(split_config, dict):
-                raise ConfigError(f"data.{split} must be a mapping")
-            missing = [
-                key
-                for key in ("manifest", "metadata", "ct_root", "pet_root")
-                if not split_config.get(key)
-            ]
-            if missing:
-                raise ConfigError(f"data.{split} is missing keys: {', '.join(missing)}")
+            validate_split_config(config["data"].get(split), f"data.{split}")
         if command == "hpo":
             require_sections(config, "hpo")
             if not config["hpo"].get("search_space"):
@@ -92,21 +116,7 @@ def validate_config(config: dict[str, Any], command: str) -> None:
             raise ConfigError("Cross-validation validation manifest must contain {fold}")
         if command == "two-stage" and config["model"].get("name") != "feature_extractor":
             raise ConfigError("Two-stage experiments require model.name=feature_extractor")
-        external = config["data"].get("external", {})
-        if not isinstance(external, dict):
-            raise ConfigError("data.external must be a named cohort mapping")
-        for cohort_name, split_config in external.items():
-            if not isinstance(split_config, dict):
-                raise ConfigError(f"data.external.{cohort_name} must be a mapping")
-            missing = [
-                key
-                for key in ("manifest", "metadata", "ct_root", "pet_root")
-                if not split_config.get(key)
-            ]
-            if missing:
-                raise ConfigError(
-                    f"data.external.{cohort_name} is missing keys: {', '.join(missing)}"
-                )
+        _validate_external_config(config)
     elif command == "preprocess":
         require_sections(config, "preprocess")
         cohorts = config["preprocess"].get("cohorts")
@@ -134,6 +144,8 @@ def validate_config(config: dict[str, Any], command: str) -> None:
         require_sections(config, "evaluate")
         if not config["evaluate"].get("task"):
             raise ConfigError("evaluate.task is required")
+        if config["evaluate"]["task"] == "checkpoint":
+            _validate_external_config(config)
     elif command == "split":
         require_sections(config, "split")
         missing = [

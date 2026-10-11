@@ -49,5 +49,9 @@ checkpoint 测试配置已显式开启逐例 CSV，包含病例编号，结果�
 预测结果以固定阈值 0.5 判定，预测成功表示结果等于真实标签。这三类标志均为数值
 0/1，概率导出不进行四舍五入。
 
+默认最终测试分三组：`multi_hospital`（wuhan、ruijin、FUSCC 三家合并）、
+`france`、`SPH_test`。保留各医院原数据目录和 TXT，合并组统一计算所有病例
+指标并输出一份预测表，不对三家医院指标取平均。
+
 预处理说明见 [preprocess/README.zh-CN.md](preprocess/README.zh-CN.md)，配置说明见
 [configs/README.zh-CN.md](configs/README.zh-CN.md)。

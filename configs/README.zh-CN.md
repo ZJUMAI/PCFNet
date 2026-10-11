@@ -15,6 +15,21 @@ ID 列为“影像组学序列号”，标签列为 `pCR`，程序只使用这�
 
 `--set` 使用 YAML 类型解析，例如 `--set model.params.pretrained=false` 是布尔值。
 
+## 外部评估三组队列
+
+`train.yaml`、`two_stage.yaml` 和 `evaluate.yaml` 默认评估三组：
+
+- `multi_hospital`：wuhan、ruijin、FUSCC 三家医院合并，当前名单共 70 例。
+- `france`：France 队列。
+- `SPH_test`：独立 SPH 测试队列。
+
+`multi_hospital.members` 下保留各医院原有 manifest、Excel 与 CT/PET 路径，
+不移动影像目录、不修改原 TXT。按 wuhan、ruijin、FUSCC 顺序拼接，医院内部
+保留名单顺序和原始编号；跨医院编号重复会报错，避免重复计数或预测错配。
+合并组使用全部病例的真实标签与概率统一计算指标，不取三家指标的平均值。
+每折输出一份 `predictions_multi_hospital.csv` 和一个合并组指标条目；
+默认不再单独输出三家医院指标。合并仅用于评估，训练和验证划分不变。
+
 ## 最终测试预测文件
 
 当前 `train.yaml`、`two_stage.yaml` 的 `output.save_predictions` 与
@@ -31,7 +46,8 @@ ID 列为“影像组学序列号”，标签列为 `pCR`，程序只使用这�
 单次训练输出 `runs/<run_name>/predictions_<cohort>.csv`，五折输出
 `runs/<run_name>/fold_<n>/predictions_<cohort>.csv`。两阶段额外保存最终树模型的
 验证集预测。独立 checkpoint 测试输出到 `evaluate.prediction_directory`。
-编号与名单顺序严格一致，带编号导出禁止打乱病例或丢弃尾批次。结果含隐私编号，
+编号与名单顺序严格一致，合并组按医院顺序及各自名单顺序排列。
+带编号导出禁止打乱病例或丢弃尾批次。结果含隐私编号，
 不得提交到 Git 或随论文公开。
 
 已有 checkpoint 不需要重新训练，例如第 1 折可运行：

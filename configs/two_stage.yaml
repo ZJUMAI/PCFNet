@@ -20,26 +20,23 @@ data:
     ct_root: /data4/zhenglujie/petct/clahed_64_0.2_20/sph/ct
     pet_root: /data4/zhenglujie/petct/clahed_64_0.2_20/sph/pet
   external:
-    ruijin:
-      manifest: ../dataset/ruijin.txt
-      metadata: /data4/zhenglujie/petct/PET_SPH_training_2025-4-8/PET_External_radiomics-2025-8-14.xlsx
-      ct_root: /data4/zhenglujie/petct/clahed_64_0.2_20/ruijin/ct
-      pet_root: /data4/zhenglujie/petct/clahed_64_0.2_20/ruijin/pet
-    wuhan:
-      manifest: ../dataset/wuhan.txt
-      metadata: /data4/zhenglujie/petct/PET_SPH_training_2025-4-8/PET_External_radiomics-2025-8-14.xlsx
-      ct_root: /data4/zhenglujie/petct/clahed_64_0.2_20/wuhan/ct
-      pet_root: /data4/zhenglujie/petct/clahed_64_0.2_20/wuhan/pet
-    FUSCC:
-      manifest: ../dataset/FUSCC.txt
-      metadata: /data4/zhenglujie/petct/PET_SPH_training_2025-4-8/PET_External_radiomics-2025-8-14.xlsx
-      ct_root: /data4/zhenglujie/petct/clahed_64_0.2_20/FUSCC/ct
-      pet_root: /data4/zhenglujie/petct/clahed_64_0.2_20/FUSCC/pet
-    SPH_test:
-      manifest: ../dataset/SPH_test.txt
-      metadata: /data4/zhenglujie/petct/PET_SPH_training_2025-4-8/PET_External_radiomics-2025-8-14.xlsx
-      ct_root: /data4/zhenglujie/petct/clahed_64_0.2_20/SPH_test/ct
-      pet_root: /data4/zhenglujie/petct/clahed_64_0.2_20/SPH_test/pet
+    multi_hospital:
+      members:
+        wuhan:
+          manifest: ../dataset/wuhan.txt
+          metadata: /data4/zhenglujie/petct/PET_SPH_training_2025-4-8/PET_External_radiomics-2025-8-14.xlsx
+          ct_root: /data4/zhenglujie/petct/clahed_64_0.2_20/wuhan/ct
+          pet_root: /data4/zhenglujie/petct/clahed_64_0.2_20/wuhan/pet
+        ruijin:
+          manifest: ../dataset/ruijin.txt
+          metadata: /data4/zhenglujie/petct/PET_SPH_training_2025-4-8/PET_External_radiomics-2025-8-14.xlsx
+          ct_root: /data4/zhenglujie/petct/clahed_64_0.2_20/ruijin/ct
+          pet_root: /data4/zhenglujie/petct/clahed_64_0.2_20/ruijin/pet
+        FUSCC:
+          manifest: ../dataset/FUSCC.txt
+          metadata: /data4/zhenglujie/petct/PET_SPH_training_2025-4-8/PET_External_radiomics-2025-8-14.xlsx
+          ct_root: /data4/zhenglujie/petct/clahed_64_0.2_20/FUSCC/ct
+          pet_root: /data4/zhenglujie/petct/clahed_64_0.2_20/FUSCC/pet
     france:
       manifest: ../dataset/france.txt
       metadata: /data4/zhenglujie/petct/PET_France/PETCT.xlsx
@@ -47,6 +44,11 @@ data:
       label_column: pCR
       ct_root: /data4/zhenglujie/petct/clahed_64_0.2_20/france/ct
       pet_root: /data4/zhenglujie/petct/clahed_64_0.2_20/france/pet
+    SPH_test:
+      manifest: ../dataset/SPH_test.txt
+      metadata: /data4/zhenglujie/petct/PET_SPH_training_2025-4-8/PET_External_radiomics-2025-8-14.xlsx
+      ct_root: /data4/zhenglujie/petct/clahed_64_0.2_20/SPH_test/ct
+      pet_root: /data4/zhenglujie/petct/clahed_64_0.2_20/SPH_test/pet
 
 model:
   name: feature_extractor

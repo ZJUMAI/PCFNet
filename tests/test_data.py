@@ -11,7 +11,14 @@ pytest.importorskip("torchio")
 import torchio as tio
 
 from petct.config import ConfigError, load_config
-from petct.data import PETCTDataset, natural_key, parse_binary_label, prediction_identifiers
+from petct.data import (
+    CombinedPETCTDataset,
+    PETCTDataset,
+    loader_from_config,
+    natural_key,
+    parse_binary_label,
+    prediction_identifiers,
+)
 
 
 def _case(root: Path, identifier: str, *, slices: int = 64) -> None:
@@ -110,3 +117,58 @@ def test_spatial_augmentation_is_synchronized(tmp_path: Path) -> None:
     dataset.transform = tio.RandomFlip(axes=(0, 1, 2), flip_probability=1.0)
     sample = dataset[0]
     assert np.array_equal(sample["ct"].numpy(), sample["pet"].numpy())
+
+
+@pytest.fixture
+def grouped_inputs(tmp_path: Path):
+    identifiers = ["003", "001", "006", "004", "005", "002"]
+    pd.DataFrame({"patient": identifiers, "outcome": [0, 1] * 3}).to_csv(
+        tmp_path / "metadata.csv", index=False
+    )
+    members = {}
+    for index, hospital in enumerate(("wuhan", "ruijin", "FUSCC")):
+        case_ids = identifiers[index * 2 : index * 2 + 2]
+        for modality in ("ct", "pet"):
+            for identifier in case_ids:
+                _case(tmp_path / hospital / modality, identifier, slices=2)
+        (tmp_path / f"{hospital}.txt").write_text("\n".join(case_ids), encoding="utf-8")
+        members[hospital] = {
+            "manifest": f"{hospital}.txt",
+            "metadata": "metadata.csv",
+            "ct_root": f"{hospital}/ct",
+            "pet_root": f"{hospital}/pet",
+        }
+    config = {
+        "_meta": {"config_dir": str(tmp_path)},
+        "data": {"id_column": "patient", "label_column": "outcome", "depth": 2},
+        "training": {"batch_size": 4, "num_workers": 0},
+    }
+    return config, {"members": members}, identifiers
+
+
+def test_grouped_loader_preserves_ids_labels_and_pairing(grouped_inputs) -> None:
+    config, group, identifiers = grouped_inputs
+    loader = loader_from_config(config, group, training=False)
+    assert isinstance(loader.dataset, CombinedPETCTDataset)
+    assert len(loader.dataset) == 6
+    assert prediction_identifiers(loader, True) == identifiers
+    assert all(not source.training for source in loader.dataset.datasets)
+    batches = list(loader)
+    assert torch.cat([batch["label"] for batch in batches]).tolist() == [0, 1] * 3
+    for batch in batches:
+        assert tuple(batch["ct"].shape[1:]) == (2, 64, 64)
+        assert torch.equal(batch["ct"], batch["pet"])
+
+
+def test_grouped_loader_rejects_duplicate_case_ids(grouped_inputs) -> None:
+    config, group, _ = grouped_inputs
+    group["members"]["ruijin"] = dict(group["members"]["wuhan"])
+    with pytest.raises(ConfigError, match="duplicate case IDs"):
+        loader_from_config(config, group, training=False)
+
+
+def test_grouped_loader_rejects_missing_member_modality(grouped_inputs) -> None:
+    config, group, _ = grouped_inputs
+    group["members"]["FUSCC"]["pet_root"] = "missing_pet"
+    with pytest.raises(ConfigError, match="PET root does not exist"):
+        loader_from_config(config, group, training=False)

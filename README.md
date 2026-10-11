@@ -66,6 +66,11 @@ Training-only spatial augmentation is applied to CT and PET in a shared TorchIO
 `Subject`. Validation and external cohorts are never augmented. The external
 cohort is not constructed during HPO and is evaluated only after model selection.
 
+Default final evaluation uses three groups: `multi_hospital` (pooled wuhan,
+ruijin, and FUSCC), `france`, and `SPH_test`. The pooled group retains each
+hospital's image roots and manifest; metrics are recomputed over all its cases,
+not averaged across hospitals. It produces one combined prediction CSV.
+
 ## Models and outputs
 
 The explicit registry provides `fusion3d`, `densenet`, and `feature_extractor`.

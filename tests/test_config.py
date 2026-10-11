@@ -10,6 +10,7 @@ from petct.config import (
     load_config,
     resolve_config_path,
     validate_config,
+    validate_split_config,
 )
 
 
@@ -49,7 +50,10 @@ def test_training_schema_rejects_missing_split_fields() -> None:
 def test_france_external_configuration(filename: str, command: str) -> None:
     config = load_config(Path(__file__).resolve().parents[1] / "configs" / filename)
     validate_config(config, command)
-    assert set(config["data"]["external"]) == {"ruijin", "wuhan", "FUSCC", "SPH_test", "france"}
+    external = config["data"]["external"]
+    assert list(external) == ["multi_hospital", "france", "SPH_test"]
+    members = external["multi_hospital"]["members"]
+    assert list(members) == ["wuhan", "ruijin", "FUSCC"]
     france = config["data"]["external"]["france"]
     assert config["data"]["id_column"] == "影像组学序列号"
     assert france["id_column"] == config["data"]["id_column"]
@@ -57,7 +61,8 @@ def test_france_external_configuration(filename: str, command: str) -> None:
     assert france["metadata"].endswith("/PET_France/PETCT.xlsx")
     assert france["ct_root"].endswith("/clahed_64_0.2_20/france/ct")
     assert france["pet_root"].endswith("/clahed_64_0.2_20/france/pet")
-    for name, cohort in config["data"]["external"].items():
+    sources = dict(members, france=external["france"], SPH_test=external["SPH_test"])
+    for name, cohort in sources.items():
         for modality in ("ct", "pet"):
             assert cohort[f"{modality}_root"] == (
                 f"/data4/zhenglujie/petct/clahed_64_0.2_20/{name}/{modality}"
@@ -65,6 +70,48 @@ def test_france_external_configuration(filename: str, command: str) -> None:
     manifest = resolve_config_path(config, france["manifest"])
     assert manifest.name == "france.txt"
     assert manifest.is_file()
+
+    combined_ids = []
+    for member in members.values():
+        member_manifest = resolve_config_path(config, member["manifest"])
+        combined_ids.extend(member_manifest.read_text(encoding="utf-8").split())
+    assert len(combined_ids) == len(set(combined_ids)) == 70
+
+
+def _source() -> dict[str, str]:
+    return dict(manifest="cases.txt", metadata="labels.csv", ct_root="ct", pet_root="pet")
+
+
+def test_grouped_evaluation_schema() -> None:
+    group = {"members": {"wuhan": _source(), "ruijin": _source(), "FUSCC": _source()}}
+    validate_split_config(group, "external", allow_groups=True)
+    with pytest.raises(ConfigError, match="only supported for evaluation"):
+        validate_split_config(group, "data.train")
+
+
+@pytest.mark.parametrize(
+    ("group", "message"),
+    [
+        ({"members": {}}, "non-empty named mapping"),
+        ({"members": []}, "non-empty named mapping"),
+        ({"members": {"wuhan": {}}}, "members.wuhan is missing keys"),
+        ({"members": {"wuhan": None}}, "members.wuhan must be a mapping"),
+        ({"members": {"nested": {"members": {"wuhan": _source()}}}}, "only supported"),
+        ({"members": {"wuhan": _source()}, "manifest": "cases.txt"}, "cannot mix"),
+    ],
+)
+def test_invalid_group_schema(group, message) -> None:
+    with pytest.raises(ConfigError, match=message):
+        validate_split_config(group, "external", allow_groups=True)
+
+
+def test_checkpoint_validation_checks_group_members() -> None:
+    config = {
+        "evaluate": {"task": "checkpoint"},
+        "data": {"external": {"multi_hospital": {"members": {"wuhan": {}}}}},
+    }
+    with pytest.raises(ConfigError, match="data.external.multi_hospital.members.wuhan"):
+        validate_config(config, "evaluate")
 
 
 def test_hpo_configuration_has_no_external_cohorts() -> None:
