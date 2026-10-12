@@ -81,6 +81,7 @@ evaluation:
   external_selection: validation_best  # Opt-in exploratory mode: per_cohort_best_auc.
 
 output:
+  save_checkpoint: false
   root: ../runs
   run_name: fusion3d
   save_predictions: true

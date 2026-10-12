@@ -7,6 +7,7 @@ pytest.importorskip("yaml")
 from petct.config import (
     ConfigError,
     apply_overrides,
+    checkpoint_saving_enabled,
     external_selection_mode,
     load_config,
     resolve_config_path,
@@ -157,3 +158,30 @@ def test_external_epoch_selection_is_not_supported_by_hpo_or_two_stage(filename,
     )
     with pytest.raises(ConfigError, match="supported only by train and crossval"):
         validate_config(config, command)
+
+
+@pytest.mark.parametrize(
+    ("filename", "command"),
+    [
+        ("train.yaml", "train"),
+        ("compare.yaml", "crossval"),
+        ("two_stage.yaml", "two-stage"),
+        ("hpo.yaml", "hpo"),
+    ],
+)
+def test_checkpoint_export_defaults_to_disabled(filename, command):
+    path = Path(__file__).resolve().parents[1] / "configs" / filename
+    config = load_config(path)
+    validate_config(config, command)
+    assert config["output"]["save_checkpoint"] is False
+    assert checkpoint_saving_enabled(config) is False
+    enabled = load_config(path, ["output.save_checkpoint=true"])
+    validate_config(enabled, command)
+    assert checkpoint_saving_enabled(enabled) is True
+    assert checkpoint_saving_enabled({}) is False
+
+
+@pytest.mark.parametrize("value", [None, 0, 1, "false", "true", {}, []])
+def test_checkpoint_export_requires_a_boolean(value):
+    with pytest.raises(ConfigError, match="output.save_checkpoint must be a YAML boolean"):
+        checkpoint_saving_enabled({"output": {"save_checkpoint": value}})

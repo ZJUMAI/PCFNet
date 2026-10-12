@@ -115,6 +115,7 @@ def test_cpu_micro_end_to_end_workflows(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(workflows, "build_model", lambda config: TinyPETCT())
     train_result = workflows.run_training(config)
     assert train_result["results"]["validation"]["auc"] is not None
+    assert not (train_result["run_directory"] / "best.pt").exists()
 
     crossval_config = dict(config)
     crossval_config["data"] = dict(config["data"])
@@ -125,12 +126,14 @@ def test_cpu_micro_end_to_end_workflows(tmp_path: Path, monkeypatch) -> None:
     crossval_config["cross_validation"] = {"folds": 2}
     crossval_config["output"] = {"root": ".", "run_name": "crossval", "save_predictions": False}
     assert len(workflows.run_cross_validation(crossval_config)["folds"]) == 2
+    assert not list((tmp_path / "crossval").rglob("*.pt"))
 
     monkeypatch.setattr(two_stage, "build_model", lambda config: TinyPETCT())
     monkeypatch.setattr(two_stage, "_tree_classifier", lambda config: LogisticRegression())
     two_config = dict(config)
     two_config["output"] = {"root": ".", "run_name": "two", "save_predictions": False}
     assert two_stage.run_two_stage(two_config)["validation"]["auc"] is not None
+    assert not (tmp_path / "two_two_stage/best.pt").exists()
 
     predictions = tmp_path / "predictions.csv"
     pd.DataFrame({"label": labels, "probability": np.linspace(0.1, 0.9, 6)}).to_csv(
@@ -203,6 +206,7 @@ def test_final_external_predictions_and_checkpoint_export(
         "output": {
             "root": ".",
             "run_name": "train",
+            "save_checkpoint": True,
             "save_predictions": True,
             "save_prediction_ids": True,
         },

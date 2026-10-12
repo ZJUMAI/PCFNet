@@ -15,7 +15,8 @@ from sklearn.metrics import roc_auc_score
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
-from petct.artifacts import save_checkpoint, save_history
+from petct.artifacts import save_checkpoint, save_history, snapshot_state_dict
+from petct.config import checkpoint_saving_enabled
 from petct.losses import FocalLoss
 from petct.metrics import binary_metrics
 
@@ -128,9 +129,10 @@ def fit(
     epoch_observer: Callable[[int, torch.nn.Module, torch.nn.Module, torch.device], None]
     | None = None,
 ) -> dict[str, Any]:
-    """Fit a model, selecting checkpoints exclusively by validation AUC."""
+    """Select the best model by validation AUC; checkpoint export is opt-in."""
 
     training = config.get("training", {})
+    save_best = checkpoint_saving_enabled(config)
     device = resolve_device(config.get("device", "auto"))
     model.to(device)
     criterion = build_criterion(config)
@@ -147,6 +149,7 @@ def fit(
     best_score = -float("inf")
     best_validation: dict[str, Any] | None = None
     best_epoch: int | None = None
+    best_state: dict[str, Any] | None = None
     epochs_without_improvement = 0
     history: list[dict[str, Any]] = []
     checkpoint_path = run_directory / "best.pt"
@@ -177,13 +180,15 @@ def fit(
             best_validation = copy.deepcopy(validation_metrics)
             best_epoch = epoch
             epochs_without_improvement = 0
-            save_checkpoint(
-                checkpoint_path,
-                model,
-                config.get("model", {}),
-                epoch,
-                validation_metrics,
-            )
+            best_state = snapshot_state_dict(model)
+            if save_best:
+                save_checkpoint(
+                    checkpoint_path,
+                    model,
+                    config.get("model", {}),
+                    epoch,
+                    validation_metrics,
+                )
         else:
             epochs_without_improvement += 1
         if epoch_callback:
@@ -195,10 +200,9 @@ def fit(
             break
 
     save_history(run_directory / "history.csv", history)
-    if not checkpoint_path.is_file():
-        raise RuntimeError("Training did not produce a checkpoint")
-    state_dict = torch.load(checkpoint_path, map_location=device, weights_only=True)
-    model.load_state_dict(state_dict)
+    if best_state is None:
+        raise RuntimeError("Training did not produce a best model")
+    model.load_state_dict(best_state)
     return {
         "model": model,
         "device": device,

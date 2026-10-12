@@ -49,6 +49,7 @@ training:
 
 evaluate:
   task: checkpoint
+  # Requires an existing checkpoint; train with --set output.save_checkpoint=true.
   checkpoint: ../runs/fusion3d/best.pt
   output: ../runs/fusion3d/final_evaluation.json
   save_predictions: true

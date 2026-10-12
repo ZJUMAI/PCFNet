@@ -99,6 +99,18 @@ def _validate_external_config(config: dict[str, Any]) -> None:
         validate_split_config(split_config, f"data.external.{name}", allow_groups=True)
 
 
+def checkpoint_saving_enabled(config: dict[str, Any]) -> bool:
+    """Validate the explicit checkpoint export switch; default to memory-only."""
+
+    output = config.get("output", {})
+    if not isinstance(output, dict):
+        raise ConfigError("output must be a mapping")
+    enabled = output.get("save_checkpoint", False)
+    if not isinstance(enabled, bool):
+        raise ConfigError("output.save_checkpoint must be a YAML boolean")
+    return enabled
+
+
 def external_selection_mode(config: dict[str, Any]) -> str:
     """Return the external evaluation policy, preserving validation-only defaults."""
 
@@ -118,6 +130,7 @@ def validate_config(config: dict[str, Any], command: str) -> None:
 
     if command in {"train", "hpo", "crossval", "two-stage"}:
         require_sections(config, "data", "model", "training", "output")
+        checkpoint_saving_enabled(config)
         selection = external_selection_mode(config)
         if selection == "per_cohort_best_auc" and command in {"hpo", "two-stage"}:
             raise ConfigError(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import csv
 import json
 import logging
@@ -80,6 +81,24 @@ def save_history(path: Path, history: list[dict[str, Any]]) -> None:
         writer = csv.DictWriter(handle, fieldnames=list(history[0]))
         writer.writeheader()
         writer.writerows(history)
+
+
+def snapshot_state_dict(model: torch.nn.Module) -> dict[str, Any]:
+    """Snapshot weights on CPU, preserving buffers, metadata, and extra state."""
+
+    import torch
+
+    state = model.state_dict()
+    snapshot = copy.copy(state)
+    for name, value in state.items():
+        snapshot[name] = (
+            value.detach().to("cpu", copy=True)
+            if isinstance(value, torch.Tensor)
+            else copy.deepcopy(value)
+        )
+    if hasattr(state, "_metadata"):
+        snapshot._metadata = copy.deepcopy(state._metadata)
+    return snapshot
 
 
 def save_checkpoint(

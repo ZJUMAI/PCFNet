@@ -80,7 +80,7 @@ def run_training(
         logger.warning(
             "External test labels are used for per-cohort epoch selection. "
             "These metrics are exploratory, not unbiased final test results; "
-            "best.pt and early stopping remain validation-only."
+            "The best model and early stopping remain validation-only."
         )
         selector = ExternalEpochSelector()
         external_loaders = {

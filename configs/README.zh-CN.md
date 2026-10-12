@@ -8,12 +8,30 @@ ID 列为“影像组学序列号”，标签列为 `pCR`，程序只使用这�
 - `data`：metadata 列、体数据形状、增强参数及各数据划分路径；`external` 是命名队列。
 - `model`：模型注册名和构造参数。
 - `training`：优化器、调度器、损失、DataLoader、epoch 和早停参数。
-- `output`：实验目录、逐例预测开关及独立的编号导出开关。
+- `output`：实验目录、可选模型权重导出、逐例预测开关及独立的编号导出开关。
 - `hpo`：可恢复的 Optuna study 和带类型的点号键搜索空间。
 - `preprocess`：各队列路径及四步预处理参数。
 - `evaluate`：指标、Youden、五折汇总、配对 DeLong 或 checkpoint 外部终评。
 
 `--set` 使用 YAML 类型解析，例如 `--set model.params.pretrained=false` 是布尔值。
+
+## 默认不保存 best.pt
+
+公共训练引擎及 `train.yaml`、`compare.yaml`、`hpo.yaml`、`two_stage.yaml` 均默认
+`output.save_checkpoint: false`。每次验证集 AUC 改善时，在 CPU 内存中复制
+最佳权重（包括模型 buffer）；结束后从内存恢复最佳模型，再测试或提取特征。
+不生成 `best.pt`，不从旧 checkpoint 读取权重；指标和预测文件格式保持不变。
+
+需要训练后单独加载模型测试时，在训练前显式启用：
+
+```bash
+python -m petct train --config configs/train.yaml --set output.save_checkpoint=true
+```
+
+五折训练时该开关对每折生效。启用后导出的 `best.pt` 仍为验证集最佳模型的
+纯 state dict。关闭导出不会删除或覆盖旧 `best.pt`。两阶段的 `tree_model.joblib`
+仍按现有逻辑保存，此开关仅控制 CNN 权重。未导出时，进程退出后无法从本次
+训练加载 checkpoint；单独 `evaluate` 的 checkpoint 模式必须使用已有模型文件。
 
 ## 外部评估三组队列
 
@@ -33,7 +51,7 @@ ID 列为“影像组学序列号”，标签列为 `pCR`，程序只使用这�
 ## 可选：三组各自选择最高 AUC 的 epoch
 
 默认配置不变：`evaluation.external_selection: validation_best`，仅按验证集
-AUC 选择 `best.pt`，训练结束后对三组分别测试一次。
+AUC 选择最佳模型，训练结束后对三组分别测试一次。
 
 在 `train` 或 `crossval` 中可显式开启：
 
@@ -54,9 +72,9 @@ evaluation:
 
 **该模式用测试集标签选模，会高估测试表现，不应作为论文无偏最终测试结果。**
 每轮额外推理三组队列，耗时会增加；各组需同时包含正负类才能计算 AUC。
-验证集仍独立控制 `best.pt`、学习率调度和早停；只考虑早停前已完成的轮次，
+验证集仍独立控制最佳模型、学习率调度和早停；只考虑早停前已完成的轮次，
 需要完整训练所有 epoch 时须自行显式设置 `training.early_stopping_patience: 0`。
-不额外保存三组测试选出的模型权重，`best.pt` 仍是验证集最佳模型，因此重新
+不额外保存三组测试选出的模型权重；若显式导出，`best.pt` 仍是验证集最佳模型，重新
 运行单 checkpoint `evaluate` 不会还原这些跨轮次的概率。须在训练前开启该模式，
 旧 checkpoint 无法补算；HPO 和两阶段树模型流程不支持此模式。
 
@@ -80,7 +98,8 @@ evaluation:
 带编号导出禁止打乱病例或丢弃尾批次。结果含隐私编号，
 不得提交到 Git 或随论文公开。
 
-已有 checkpoint 不需要重新训练，例如第 1 折可运行：
+已有 checkpoint 不需要重新训练；新训练须事先开启 `output.save_checkpoint: true`
+才会生成模型文件。例如，已有第 1 折 checkpoint 可运行：
 
 ```bash
 python -m petct evaluate --config configs/evaluate.yaml \

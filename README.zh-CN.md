@@ -59,5 +59,10 @@ checkpoint 测试配置已显式开启逐例 CSV，包含病例编号，结果�
 该模式用测试集选模，会高估测试表现，不应作为论文无偏终评。
 默认仍为 `validation_best`，验证集选 checkpoint 和早停的逻辑均不改变。
 
+默认 `output.save_checkpoint: false`，不保存 `best.pt`；验证集最佳权重保留在
+CPU 内存中，训练结束后恢复，用于测试或两阶段特征提取。指标与预测输出不受影响。
+需要保留模型供之后单独测试时，训练命令加 `--set output.save_checkpoint=true`。
+已有 `best.pt` 不会自动删除，新训练也不会读取旧文件来恢复最佳权重。
+
 预处理说明见 [preprocess/README.zh-CN.md](preprocess/README.zh-CN.md)，配置说明见
 [configs/README.zh-CN.md](configs/README.zh-CN.md)。

@@ -8,7 +8,7 @@ pytest.importorskip("sklearn")
 
 import petct.engine as engine
 import petct.workflows as workflows
-from petct.artifacts import save_predictions
+from petct.artifacts import save_predictions, snapshot_state_dict
 from petct.metrics import binary_metrics
 
 
@@ -30,7 +30,7 @@ def test_fit_selects_highest_validation_auc_not_lowest_loss(tmp_path: Path, monk
     monkeypatch.setattr(
         engine,
         "save_checkpoint",
-        lambda path, current, *args: torch.save(current.state_dict(), path),
+        lambda *args: pytest.fail("Checkpoint export must be disabled by default"),
     )
     logger = type("Logger", (), {"info": lambda *args, **kwargs: None})()
     result = engine.fit(
@@ -43,6 +43,7 @@ def test_fit_selects_highest_validation_auc_not_lowest_loss(tmp_path: Path, monk
     )
     assert result["best_epoch"] == 2
     assert result["validation"]["auc"] == pytest.approx(0.8)
+    assert not (tmp_path / "best.pt").exists()
 
 
 def test_external_loader_is_not_built_when_final_evaluation_is_disabled(
@@ -96,8 +97,13 @@ def test_predictions_are_opt_in(tmp_path: Path) -> None:
     assert "patient" not in path.read_text(encoding="utf-8").lower()
 
 
-def test_epoch_observer_does_not_change_validation_checkpoint_or_history(tmp_path, monkeypatch):
+@pytest.mark.parametrize("save_checkpoint", [None, False, True])
+@pytest.mark.parametrize("stale_checkpoint", [False, True])
+def test_epoch_observer_does_not_change_best_weights_or_history(
+    tmp_path, monkeypatch, save_checkpoint, stale_checkpoint
+):
     model = torch.nn.Linear(1, 2)
+    model.register_buffer("steps", torch.tensor(0))
     epoch_count = 0
     validation = iter([0.5, 0.8, 0.7])
     observed = []
@@ -107,6 +113,7 @@ def test_epoch_observer_does_not_change_validation_checkpoint_or_history(tmp_pat
         epoch_count += 1
         with torch.no_grad():
             model.weight.fill_(epoch_count)
+            model.steps.fill_(epoch_count)
         return {"loss": 1.0}, None, None
 
     def observe(epoch, current_model, criterion, device):
@@ -121,11 +128,22 @@ def test_epoch_observer_does_not_change_validation_checkpoint_or_history(tmp_pat
         lambda *args: ({"auc": next(validation), "loss": 0.2}, None, None),
     )
     logger = type("Logger", (), {"info": lambda *args, **kwargs: None})()
+    checkpoint_path = tmp_path / "best.pt"
+    stale_bytes = b"pre-existing checkpoint must not be loaded or deleted"
+    if stale_checkpoint:
+        checkpoint_path.write_bytes(stale_bytes)
+    config = {"device": "cpu", "training": {"epochs": 3, "early_stopping_patience": 0}}
+    if save_checkpoint is not None:
+        config["output"] = {"save_checkpoint": save_checkpoint}
+    original_load = torch.load
+    monkeypatch.setattr(
+        torch, "load", lambda *args, **kwargs: pytest.fail("fit must restore from memory")
+    )
     result = engine.fit(
         model,
         [],
         [],
-        {"device": "cpu", "training": {"epochs": 3, "early_stopping_patience": 0}},
+        config,
         tmp_path,
         logger,
         epoch_observer=observe,
@@ -133,6 +151,13 @@ def test_epoch_observer_does_not_change_validation_checkpoint_or_history(tmp_pat
     assert observed == [1, 2, 3]
     assert result["best_epoch"] == 2
     assert result["model"].weight[0, 0].item() == 2
+    assert result["model"].steps.item() == 2
+    assert checkpoint_path.exists() == (stale_checkpoint or bool(save_checkpoint))
+    if save_checkpoint:
+        state = original_load(checkpoint_path, map_location="cpu", weights_only=True)
+        assert state["weight"][0, 0].item() == state["steps"].item() == 2
+    elif stale_checkpoint:
+        assert checkpoint_path.read_bytes() == stale_bytes
     assert set(result["history"][0]) == {
         "epoch",
         "learning_rate",
@@ -281,3 +306,49 @@ def test_test_epoch_selection_does_not_bypass_external_evaluation_disable(
     )
     assert accesses == ["train", "validation"]
     assert "external" not in result["results"]
+
+
+def test_state_snapshot_copies_cpu_tensors_buffers_extra_state_and_metadata():
+    class StatefulModel(torch.nn.Linear):
+        def __init__(self):
+            super().__init__(1, 2)
+            self.payload = {"values": [1]}
+            self.register_buffer("counter", torch.tensor(1))
+
+        def get_extra_state(self):
+            return self.payload
+
+        def set_extra_state(self, state):
+            self.payload = state
+
+    model = StatefulModel()
+    snapshot = snapshot_state_dict(model)
+    original_weight = snapshot["weight"].clone()
+    assert snapshot["weight"].device.type == "cpu"
+    assert snapshot["weight"].data_ptr() != model.weight.data_ptr()
+    assert snapshot._metadata == model.state_dict()._metadata
+    with torch.no_grad():
+        model.weight.fill_(9)
+        model.counter.fill_(9)
+    model.payload["values"][0] = 9
+    assert torch.equal(snapshot["weight"], original_weight)
+    assert snapshot["counter"].item() == 1
+    assert snapshot["_extra_state"] == {"values": [1]}
+    model.load_state_dict(snapshot)
+    assert torch.equal(model.weight, original_weight)
+    assert model.counter.item() == 1
+    assert model.payload == {"values": [1]}
+
+
+def test_zero_epochs_cannot_restore_a_stale_checkpoint(tmp_path):
+    (tmp_path / "best.pt").write_bytes(b"old checkpoint")
+    logger = type("Logger", (), {"info": lambda *args, **kwargs: None})()
+    with pytest.raises(RuntimeError, match="did not produce a best model"):
+        engine.fit(
+            torch.nn.Linear(1, 2),
+            [],
+            [],
+            {"device": "cpu", "training": {"epochs": 0}},
+            tmp_path,
+            logger,
+        )

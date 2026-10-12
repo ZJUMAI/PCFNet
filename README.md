@@ -49,7 +49,8 @@ python -m petct train --config configs/train.yaml \
 The historical scripts remain as thin wrappers. For example,
 `python train_petct.py --config configs/train.yaml` calls the same public API.
 An HPO best configuration should keep `evaluation.external_after_training: false`;
-use `configs/evaluate.yaml` for the separate final checkpoint evaluation.
+enable `output.save_checkpoint: true` during final training if you plan to use
+`configs/evaluate.yaml` for separate final checkpoint evaluation.
 
 ## Data contract
 
@@ -87,7 +88,13 @@ TorchVision's weights API is used, and pretrained first-layer weights are expand
 to the required input channels.
 
 By default, a run writes `resolved_config.yaml`, `metrics.json`, `history.csv`,
-`run.log`, and a pure `best.pt` state dict. The training and two-stage server
+and `run.log`, but does not write `best.pt`. The validation-best weights are
+copied to CPU memory and restored before final evaluation or second-stage
+feature extraction. Set `output.save_checkpoint: true` (or
+`--set output.save_checkpoint=true`) to also export a pure `best.pt` state dict.
+Standalone checkpoint evaluation requires an existing saved checkpoint.
+Previously saved checkpoints are not deleted or used to restore a new training run.
+The training and two-stage server
 configurations explicitly enable final prediction CSVs with case IDs; the
 checkpoint evaluation configuration does the same. These private files are
 excluded from Git. The API remains opt-in: `save_predictions` enables export,
