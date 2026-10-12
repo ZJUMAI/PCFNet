@@ -23,7 +23,7 @@ def _config(tmp_path: Path) -> dict:
             "label_column": "label",
             "mode": "holdout",
             "validation_fraction": 0.2,
-            "seed": 513,
+            "seed": 42,
             "output_directory": "splits",
         },
     }
@@ -52,6 +52,18 @@ def test_holdout_is_stratified_disjoint_complete_and_reproducible(tmp_path: Path
     run_split(config)
     assert _ids(train_path) == train
     assert _ids(validation_path) == validation
+
+
+def test_omitted_split_seed_matches_explicit_42(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    config["split"].pop("seed")
+    assert run_split(config)["seed"] == 42
+    train = _ids(tmp_path / "splits/train.txt")
+    validation = _ids(tmp_path / "splits/validation.txt")
+    config["split"]["seed"] = 42
+    run_split(config)
+    assert _ids(tmp_path / "splits/train.txt") == train
+    assert _ids(tmp_path / "splits/validation.txt") == validation
 
 
 def test_configs_without_mode_or_fold_count_default_to_five_folds(tmp_path: Path) -> None:

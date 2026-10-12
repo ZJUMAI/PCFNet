@@ -53,7 +53,7 @@ class PETCTDataset(Dataset):
         training: bool = False,
         augment_probability: float = 0.0,
         strict_slice_count: bool = True,
-        seed: int = 513,
+        seed: int = 42,
         positive_values: list[Any] | None = None,
         negative_values: list[Any] | None = None,
     ):
@@ -204,7 +204,7 @@ def dataset_from_config(
         "training": training,
         "augment_probability": (data_defaults.get("augment_probability", 0.0) if training else 0.0),
         "strict_slice_count": data_defaults.get("strict_slice_count", True),
-        "seed": root_config.get("seed", 513),
+        "seed": root_config.get("seed", 42),
         "positive_values": data_defaults.get("positive_values"),
         "negative_values": data_defaults.get("negative_values"),
     }
@@ -222,7 +222,7 @@ def loader_from_config(
 ) -> DataLoader:
     dataset = dataset_from_config(config, split_config, training=training)
     training_config = config.get("training", {})
-    seed = int(config.get("seed", 513))
+    seed = int(config.get("seed", 42))
 
     return DataLoader(
         dataset,

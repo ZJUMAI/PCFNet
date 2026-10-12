@@ -53,7 +53,7 @@ def bootstrap_interval(
     *,
     samples: int = 1000,
     confidence: float = 0.95,
-    seed: int = 513,
+    seed: int = 42,
 ) -> dict[str, float | None]:
     labels = np.asarray(labels)
     probabilities = np.asarray(probabilities)

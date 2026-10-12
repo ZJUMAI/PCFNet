@@ -62,7 +62,7 @@ def run_training(
     data = config["data"]
     if "train" not in data or "validation" not in data:
         raise ConfigError("data.train and data.validation are required")
-    set_seed(int(config.get("seed", 513)), bool(config.get("deterministic", True)))
+    set_seed(int(config.get("seed", 42)), bool(config.get("deterministic", True)))
     run_directory = run_directory or prepare_run_directory(config)
     run_directory.mkdir(parents=True, exist_ok=True)
     logger = configure_logging(run_directory)

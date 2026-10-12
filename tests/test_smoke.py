@@ -80,7 +80,7 @@ def test_cpu_micro_end_to_end_workflows(tmp_path: Path, monkeypatch) -> None:
         (tmp_path / f"valid_{fold}.txt").write_text("5\n6\n", encoding="utf-8")
     config = {
         "_meta": {"config_dir": str(tmp_path)},
-        "seed": 4,
+        "seed": 42,
         "device": "cpu",
         "data": {
             "id_column": "id",

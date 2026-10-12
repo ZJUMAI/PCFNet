@@ -185,3 +185,17 @@ def test_checkpoint_export_defaults_to_disabled(filename, command):
 def test_checkpoint_export_requires_a_boolean(value):
     with pytest.raises(ConfigError, match="output.save_checkpoint must be a YAML boolean"):
         checkpoint_saving_enabled({"output": {"save_checkpoint": value}})
+
+
+@pytest.mark.parametrize(
+    "filename",
+    ["train.yaml", "compare.yaml", "hpo.yaml", "two_stage.yaml", "evaluate.yaml", "split.yaml"],
+)
+def test_all_example_random_seeds_are_42(filename):
+    config = load_config(Path(__file__).resolve().parents[1] / "configs" / filename)
+    if filename == "split.yaml":
+        assert config["split"]["seed"] == 42
+    else:
+        assert config["seed"] == 42
+    if filename == "hpo.yaml":
+        assert config["hpo"]["seed"] == 42

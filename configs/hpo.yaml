@@ -1,4 +1,4 @@
-seed: 513
+seed: 42
 deterministic: true
 device: auto
 
@@ -39,7 +39,7 @@ evaluation:
 hpo:
   study_name: petct_fusion3d
   trials: 30
-  seed: 513
+  seed: 42
   pruner_startup_trials: 5
   pruner_warmup_steps: 3
   keep_trial_outputs: false

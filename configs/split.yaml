@@ -7,6 +7,6 @@ split:
     - ../dataset/valid.txt
   mode: kfold
   folds: 5
-  seed: 513
+  seed: 42
   output_directory: ../dataset/generated_splits_5fold
   filename_pattern: 'fold_{fold}_{split}.txt'

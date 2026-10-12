@@ -112,7 +112,7 @@ metrics、Youden 与配对 DeLong 命令可自动识别新表头和旧匿名表�
 配对 DeLong 要求两模型的编号、标签和行顺序完全相同。
 不同折对同一病例的预测不能当成独立病例拼接后计算统计量。
 
-`split.yaml` 默认生成分层五折名单，随机种子为 513。每折约 80% 训练、20% 验证，
+`split.yaml` 默认生成分层五折名单，随机种子为 42。每折约 80% 训练、20% 验证，
 每例恰好在一折中作为验证病例，不是重复随机划分五次。
 `split.metadata` 直接读取原 SPH radiomics Excel。`source_manifests` 合并已有
 `dataset/train.txt` 和 `dataset/valid.txt`，限定本次重新划分的病例范围，表内其他
@@ -129,6 +129,11 @@ python -m petct crossval --config configs/compare.yaml
 `compare.yaml` 已同步读取这些文件并执行五折。未指定折数时，划分和交叉验证代码
 也都默认五折。`summary.json` 仅记录匿名病例总数及类别统计。
 人数不能整除时每折比例略有取整；验证集用于早停与模型选择，外部测试队列保持独立。
+
+训练、数据加载、Optuna、树模型、划分及 bootstrap 的配置和代码默认种子均为 42。
+已生成的划分名单不会自动改变；新实验若要使用 seed=42 的划分，请重新运行 `split`。
+原队列 TXT 保留不变。DataLoader worker 的种子由基础种子确定性派生，保持可复现
+且避免各 worker 使用完全相同的随机增强序列。
 
 `train`、`hpo`、`two-stage` 仍是单次运行，默认读取五折名单中的第 1 折；
 切换其他折时须同时覆盖训练和验证 manifest。HPO 只使用验证集，不访问外部队列。

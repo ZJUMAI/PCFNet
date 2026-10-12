@@ -180,7 +180,7 @@ in the same row order. Do not combine different folds as independent patients.
 Use YAML-native values in overrides. For example, `--set model.params.pretrained=false`
 is a Boolean while `--set training.batch_size=4` is an integer.
 
-`split.yaml` defaults to stratified five-fold cross-validation with seed 513.
+`split.yaml` defaults to stratified five-fold cross-validation with seed 42.
 Each fold uses approximately 80% of cases for training and 20% for validation;
 every case appears in exactly one validation fold. `source_manifests` combines
 the original `dataset/train.txt` and `dataset/valid.txt` into the eligible case
@@ -200,6 +200,13 @@ The generated directory is `dataset/generated_splits_5fold`, containing
 `compare.yaml` reads these templates and runs five folds. Both the splitter and
 cross-validation runner also default to five folds when no fold count is given.
 Integer rounding can slightly change each fold's 80:20 ratio.
+
+All configured seeds and code defaults are 42, including training, data loading,
+Optuna, tree classifiers, splitting, and bootstrap intervals. Existing generated
+manifests are not changed automatically; rerun `split` to regenerate the folds
+with seed 42 before starting a new experiment. Original cohort TXT files are
+preserved. DataLoader workers use distinct seeds deterministically derived
+from the base seed rather than identical random streams.
 
 The single-run commands `train`, `hpo`, and `two-stage` read fold 1 by default;
 they do not automatically run all five folds. Override both manifest paths to

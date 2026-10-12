@@ -22,7 +22,7 @@ def test_optuna_objective_persistence_and_best_yaml(tmp_path: Path, monkeypatch)
         "hpo": {
             "study_name": "test-study",
             "trials": 2,
-            "seed": 7,
+            "seed": 42,
             "pruner_startup_trials": 10,
             "search_space": {
                 "training.learning_rate": {"type": "float", "low": 0.001, "high": 0.1, "log": True}
