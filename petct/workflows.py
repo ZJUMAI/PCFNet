@@ -13,11 +13,12 @@ from petct.artifacts import (
     save_predictions,
     save_resolved_config,
 )
-from petct.config import ConfigError, require_sections
+from petct.config import ConfigError, external_selection_mode, require_sections
 from petct.data import loader_from_config, prediction_identifiers
 from petct.engine import evaluate_loader, fit, set_seed
 from petct.metrics import summarize_folds
 from petct.models import build_model
+from petct.selection import ExternalEpochSelector
 
 
 def _evaluate_external(
@@ -69,6 +70,46 @@ def run_training(
     train_loader = loader_from_config(config, data["train"], training=True)
     validation_loader = loader_from_config(config, data["validation"], training=False)
     model = build_model(config)
+    selection = external_selection_mode(config)
+    evaluate_external = evaluate_external and bool(
+        config.get("evaluation", {}).get("external_after_training", True)
+    )
+    selector = None
+    fit_options = {}
+    if evaluate_external and selection == "per_cohort_best_auc":
+        logger.warning(
+            "External test labels are used for per-cohort epoch selection. "
+            "These metrics are exploratory, not unbiased final test results; "
+            "best.pt and early stopping remain validation-only."
+        )
+        selector = ExternalEpochSelector()
+        external_loaders = {
+            name: loader_from_config(config, source, training=False)
+            for name, source in data.get("external", {}).items()
+        }
+        output = config.get("output", {})
+        export_ids = bool(output.get("save_predictions", False)) and bool(
+            output.get("save_prediction_ids", False)
+        )
+        identifiers = {
+            name: prediction_identifiers(loader, export_ids)
+            for name, loader in external_loaders.items()
+        }
+
+        def observe_epoch(epoch, current_model, criterion, device):
+            for name, loader in external_loaders.items():
+                metrics, labels, probabilities = evaluate_loader(
+                    current_model, loader, criterion, device
+                )
+                selector.update(name, epoch, metrics, labels, probabilities, identifiers[name])
+                logger.info(
+                    "epoch=%d external_cohort=%s auc=%s",
+                    epoch,
+                    name,
+                    metrics["auc"],
+                )
+
+        fit_options["epoch_observer"] = observe_epoch
     fitted = fit(
         model,
         train_loader,
@@ -77,15 +118,24 @@ def run_training(
         run_directory,
         logger,
         epoch_callback,
+        **fit_options,
     )
     results: dict[str, Any] = {
         "best_epoch": fitted["best_epoch"],
         "validation": fitted["validation"],
     }
-    evaluate_external = evaluate_external and bool(
-        config.get("evaluation", {}).get("external_after_training", True)
-    )
-    if evaluate_external:
+    if selector is not None:
+        results["external"] = selector.selected_metrics()
+        for name, prediction in selector.best.items():
+            save_predictions(
+                run_directory / f"predictions_{name}.csv",
+                prediction.labels,
+                prediction.probabilities,
+                bool(config["output"].get("save_predictions", False)),
+                identifiers=prediction.identifiers,
+                threshold=float(prediction.metrics.get("threshold", 0.5)),
+            )
+    elif evaluate_external:
         results["external"] = _evaluate_external(
             fitted["model"],
             fitted["criterion"],

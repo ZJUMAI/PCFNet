@@ -53,5 +53,11 @@ checkpoint 测试配置已显式开启逐例 CSV，包含病例编号，结果�
 `france`、`SPH_test`。保留各医院原数据目录和 TXT，合并组统一计算所有病例
 指标并输出一份预测表，不对三家医院指标取平均。
 
+`train` / `crossval` 可显式设置
+`evaluation.external_selection: per_cohort_best_auc`，让三组各自选择 AUC
+最高的 epoch，并从同一轮保存指标和概率；输出格式不变。
+该模式用测试集选模，会高估测试表现，不应作为论文无偏终评。
+默认仍为 `validation_best`，验证集选 checkpoint 和早停的逻辑均不改变。
+
 预处理说明见 [preprocess/README.zh-CN.md](preprocess/README.zh-CN.md)，配置说明见
 [configs/README.zh-CN.md](configs/README.zh-CN.md)。

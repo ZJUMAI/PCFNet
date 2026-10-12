@@ -30,6 +30,36 @@ ID 列为“影像组学序列号”，标签列为 `pCR`，程序只使用这�
 每折输出一份 `predictions_multi_hospital.csv` 和一个合并组指标条目；
 默认不再单独输出三家医院指标。合并仅用于评估，训练和验证划分不变。
 
+## 可选：三组各自选择最高 AUC 的 epoch
+
+默认配置不变：`evaluation.external_selection: validation_best`，仅按验证集
+AUC 选择 `best.pt`，训练结束后对三组分别测试一次。
+
+在 `train` 或 `crossval` 中可显式开启：
+
+```yaml
+evaluation:
+  external_after_training: true
+  external_selection: per_cohort_best_auc
+```
+
+也可在现有命令后追加 `--set evaluation.external_selection=per_cohort_best_auc`。
+建议使用单独的 `output.run_name`，避免覆盖原终评结果。
+
+开启后，每个实际完成的 epoch 都评估三组测试集；三组各自保留最高 AUC 的
+一轮，因此可以来自三个不同 epoch。并列时保留最早一轮。每组最终保存的
+全部 metrics 与预测概率都来自该组同一轮，不分别对每项指标取最大值。
+不额外保存选中 epoch：指标 JSON 结构、history 列、CSV 表头及文件名均保持原样。
+逐例导出仍由 `save_predictions` 和 `save_prediction_ids` 控制。
+
+**该模式用测试集标签选模，会高估测试表现，不应作为论文无偏最终测试结果。**
+每轮额外推理三组队列，耗时会增加；各组需同时包含正负类才能计算 AUC。
+验证集仍独立控制 `best.pt`、学习率调度和早停；只考虑早停前已完成的轮次，
+需要完整训练所有 epoch 时须自行显式设置 `training.early_stopping_patience: 0`。
+不额外保存三组测试选出的模型权重，`best.pt` 仍是验证集最佳模型，因此重新
+运行单 checkpoint `evaluate` 不会还原这些跨轮次的概率。须在训练前开启该模式，
+旧 checkpoint 无法补算；HPO 和两阶段树模型流程不支持此模式。
+
 ## 最终测试预测文件
 
 当前 `train.yaml`、`two_stage.yaml` 的 `output.save_predictions` 与

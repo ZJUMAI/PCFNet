@@ -7,6 +7,7 @@ pytest.importorskip("yaml")
 from petct.config import (
     ConfigError,
     apply_overrides,
+    external_selection_mode,
     load_config,
     resolve_config_path,
     validate_config,
@@ -118,3 +119,41 @@ def test_hpo_configuration_has_no_external_cohorts() -> None:
     config = load_config(Path(__file__).resolve().parents[1] / "configs" / "hpo.yaml")
     validate_config(config, "hpo")
     assert not config["data"].get("external")
+
+
+def test_external_epoch_selection_is_opt_in() -> None:
+    assert external_selection_mode({}) == "validation_best"
+    assert external_selection_mode({"evaluation": {}}) == "validation_best"
+    path = Path(__file__).resolve().parents[1] / "configs/train.yaml"
+    config = load_config(path)
+    assert external_selection_mode(config) == "validation_best"
+    config = load_config(path, ["evaluation.external_selection=per_cohort_best_auc"])
+    validate_config(config, "train")
+    assert external_selection_mode(config) == "per_cohort_best_auc"
+    config = load_config(
+        path,
+        [
+            "evaluation.external_selection=per_cohort_best_auc",
+            "data.train.manifest=fold_{fold}_train.txt",
+            "data.validation.manifest=fold_{fold}_validation.txt",
+        ],
+    )
+    validate_config(config, "crossval")
+
+
+@pytest.mark.parametrize("value", ["best", False, None, {}, []])
+def test_invalid_external_epoch_selection_is_rejected(value) -> None:
+    with pytest.raises(ConfigError, match="evaluation.external_selection"):
+        external_selection_mode({"evaluation": {"external_selection": value}})
+
+
+@pytest.mark.parametrize(
+    ("filename", "command"), [("hpo.yaml", "hpo"), ("two_stage.yaml", "two-stage")]
+)
+def test_external_epoch_selection_is_not_supported_by_hpo_or_two_stage(filename, command):
+    config = load_config(
+        Path(__file__).resolve().parents[1] / "configs" / filename,
+        ["evaluation.external_selection=per_cohort_best_auc"],
+    )
+    with pytest.raises(ConfigError, match="supported only by train and crossval"):
+        validate_config(config, command)

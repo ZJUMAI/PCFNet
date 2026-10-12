@@ -99,11 +99,30 @@ def _validate_external_config(config: dict[str, Any]) -> None:
         validate_split_config(split_config, f"data.external.{name}", allow_groups=True)
 
 
+def external_selection_mode(config: dict[str, Any]) -> str:
+    """Return the external evaluation policy, preserving validation-only defaults."""
+
+    evaluation = config.get("evaluation", {})
+    if not isinstance(evaluation, dict):
+        raise ConfigError("evaluation must be a mapping")
+    mode = evaluation.get("external_selection", "validation_best")
+    if mode not in ("validation_best", "per_cohort_best_auc"):
+        raise ConfigError(
+            "evaluation.external_selection must be validation_best or per_cohort_best_auc"
+        )
+    return mode
+
+
 def validate_config(config: dict[str, Any], command: str) -> None:
     """Validate the command-level YAML contract before expensive work begins."""
 
     if command in {"train", "hpo", "crossval", "two-stage"}:
         require_sections(config, "data", "model", "training", "output")
+        selection = external_selection_mode(config)
+        if selection == "per_cohort_best_auc" and command in {"hpo", "two-stage"}:
+            raise ConfigError(
+                "per_cohort_best_auc is supported only by train and crossval, not HPO or two-stage"
+            )
         for split in ("train", "validation"):
             validate_split_config(config["data"].get(split), f"data.{split}")
         if command == "hpo":

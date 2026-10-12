@@ -150,8 +150,9 @@ def test_cpu_micro_end_to_end_workflows(tmp_path: Path, monkeypatch) -> None:
 
 
 @pytest.mark.parametrize("grouped", [False, True])
+@pytest.mark.parametrize("selection", ["validation_best", "per_cohort_best_auc"])
 def test_final_external_predictions_and_checkpoint_export(
-    tmp_path: Path, monkeypatch, grouped
+    tmp_path: Path, monkeypatch, grouped, selection
 ) -> None:
     identifiers = ["003", "001", "002", "004"]
     _images(tmp_path / "ct", identifiers, 10)
@@ -192,6 +193,7 @@ def test_final_external_predictions_and_checkpoint_export(
             "external": {cohort_name: external_source},
         },
         "model": {"name": "tiny", "params": {}},
+        "evaluation": {"external_selection": selection},
         "training": {
             "epochs": 1,
             "batch_size": 2,
@@ -224,6 +226,7 @@ def test_final_external_predictions_and_checkpoint_export(
     monkeypatch.setattr(models, "build_model", lambda config: TinyPETCT())
     checkpoint_config = dict(
         config,
+        evaluation={"external_selection": "validation_best"},
         evaluate={
             "task": "checkpoint",
             "checkpoint": str(result["run_directory"] / "best.pt"),
@@ -242,7 +245,11 @@ def test_final_external_predictions_and_checkpoint_export(
 
     monkeypatch.setattr(two_stage, "build_model", lambda config: TinyPETCT())
     monkeypatch.setattr(two_stage, "_tree_classifier", lambda config: LogisticRegression())
-    two_config = dict(config, output=dict(config["output"], run_name="two"))
+    two_config = dict(
+        config,
+        output=dict(config["output"], run_name="two"),
+        evaluation={"external_selection": "validation_best"},
+    )
     tree_result = two_stage.run_two_stage(two_config)
     tree_table = pd.read_csv(
         tmp_path / f"two_two_stage/predictions_{cohort_name}.csv", dtype={"影像组学序列号": str}

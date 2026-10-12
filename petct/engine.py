@@ -124,6 +124,9 @@ def fit(
     run_directory: Path,
     logger: logging.Logger,
     epoch_callback: Callable[[int, dict[str, Any]], None] | None = None,
+    *,
+    epoch_observer: Callable[[int, torch.nn.Module, torch.nn.Module, torch.device], None]
+    | None = None,
 ) -> dict[str, Any]:
     """Fit a model, selecting checkpoints exclusively by validation AUC."""
 
@@ -185,6 +188,8 @@ def fit(
             epochs_without_improvement += 1
         if epoch_callback:
             epoch_callback(epoch, validation_metrics)
+        if epoch_observer:
+            epoch_observer(epoch, model, criterion, device)
         if early_stopping > 0 and epochs_without_improvement >= early_stopping:
             logger.info("early_stopping epoch=%d", epoch)
             break
