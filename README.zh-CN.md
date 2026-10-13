@@ -59,6 +59,21 @@ checkpoint 测试配置已显式开启逐例 CSV，包含病例编号，结果�
 该模式用测试集选模，会高估测试表现，不应作为论文无偏终评。
 默认仍为 `validation_best`，验证集选 checkpoint 和早停的逻辑均不改变。
 
+新增实验模型 `fusion3d_spatial`，原 `fusion3d` 保留作对照。保留两条 R3D-18
+backbone，取全局池化前的三维特征图，池化为 4×4×4 个区域，再投影为每模态
+64 个 128 维 token。使用一层双向、4 头 Cross-Attention 与残差连接；更新后的
+token 分别取均值、拼接，再由分类头预测。第一版不加门控、辅助头、额外 FFN
+或位置编码，也不修改预处理。
+
+```bash
+python -m petct train --config configs/train_spatial.yaml
+```
+
+新配置沿用原数据、第 1 折名单、优化器和训练参数，独立输出到
+`runs/fusion3d_spatial`。seed=42、三组测试、默认验证集选模、预测格式及模型
+导出开关均保持不变。旧全局融合模型的 checkpoint 不能直接加载到新模型。
+完整五折命令见配置说明；比较时使用相同划分。
+
 默认 `output.save_checkpoint: false`，不保存 `best.pt`；验证集最佳权重保留在
 CPU 内存中，训练结束后恢复，用于测试或两阶段特征提取。指标与预测输出不受影响。
 需要保留模型供之后单独测试时，训练命令加 `--set output.save_checkpoint=true`。

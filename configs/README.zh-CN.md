@@ -15,9 +15,51 @@ ID 列为“影像组学序列号”，标签列为 `pCR`，程序只使用这�
 
 `--set` 使用 YAML 类型解析，例如 `--set model.params.pretrained=false` 是布尔值。
 
+## 空间 token 融合实验
+
+`train_spatial.yaml` 使用新增模型 `fusion3d_spatial`；原 `train.yaml` 和
+`fusion3d` 保留作对照。两条 R3D-18 backbone 不变，读取全局池化前的空间
+特征图，通过自适应 4×4×4 池化得到每模态 64 个 token，再投影到 128 维。
+使用一层双向、4 头 Cross-Attention，注意力前做 LayerNorm，并将交互输出
+残差加回各自原 token。两路更新后的 token 分别平均、拼接，再输入分类头。
+不加门控、辅助头、额外 FFN 或位置编码。
+
+新配置仅调整模型及输出目录，数据路径、标签表、名单、损失、优化器、调度
+和早停均沿用原配置。独立输出到 `runs/fusion3d_spatial`，seed=42，默认仍
+按验证集选模、默认不保存 `best.pt`，三组测试及预测表格式不变。模型是否
+改善须通过内部验证判断，不根据测试集选择架构；比较时使用同一划分。
+
+服务器单折与完整五折命令：
+
+```bash
+CUDA_VISIBLE_DEVICES=5 python -m petct train --config configs/train_spatial.yaml \
+  --set device=cuda:0
+
+CUDA_VISIBLE_DEVICES=5 python -m petct crossval --config configs/train_spatial.yaml \
+  --set device=cuda:0 \
+  --set 'data.train.manifest=../dataset/generated_splits_5fold/fold_{fold}_train.txt' \
+  --set 'data.validation.manifest=../dataset/generated_splits_5fold/fold_{fold}_validation.txt' \
+  --set output.run_name=pcfnet_spatial_crossval
+```
+
+GPU 编号是可见设备的相对编号，物理 GPU 5 在该进程内是 `cuda:0`。CPU 测试
+可去掉环境变量并设置 `--set device=cpu`。未修改现有配准、裁剪或强度处理。
+如需之后单独测试，训练时显式加 `--set output.save_checkpoint=true`。
+新旧融合模型 checkpoint 不兼容。已有空间模型 checkpoint 的单独测试命令：
+
+```bash
+python -m petct evaluate --config configs/evaluate.yaml \
+  --set model.name=fusion3d_spatial \
+  --set model.params.embedding_dim=128 \
+  --set model.params.num_heads=4 \
+  --set evaluate.checkpoint=../runs/fusion3d_spatial/best.pt \
+  --set evaluate.output=../runs/fusion3d_spatial/final_evaluation.json \
+  --set evaluate.prediction_directory=../runs/fusion3d_spatial/final_predictions
+```
+
 ## 默认不保存 best.pt
 
-公共训练引擎及 `train.yaml`、`compare.yaml`、`hpo.yaml`、`two_stage.yaml` 均默认
+公共训练引擎及 `train.yaml`、`train_spatial.yaml`、`compare.yaml`、`hpo.yaml`、`two_stage.yaml` 均默认
 `output.save_checkpoint: false`。每次验证集 AUC 改善时，在 CPU 内存中复制
 最佳权重（包括模型 buffer）；结束后从内存恢复最佳模型，再测试或提取特征。
 不生成 `best.pt`，不从旧 checkpoint 读取权重；指标和预测文件格式保持不变。

@@ -47,7 +47,12 @@ def test_training_schema_rejects_missing_split_fields() -> None:
 
 @pytest.mark.parametrize(
     ("filename", "command"),
-    [("train.yaml", "train"), ("two_stage.yaml", "two-stage"), ("evaluate.yaml", "evaluate")],
+    [
+        ("train.yaml", "train"),
+        ("train_spatial.yaml", "train"),
+        ("two_stage.yaml", "two-stage"),
+        ("evaluate.yaml", "evaluate"),
+    ],
 )
 def test_france_external_configuration(filename: str, command: str) -> None:
     config = load_config(Path(__file__).resolve().parents[1] / "configs" / filename)
@@ -164,6 +169,7 @@ def test_external_epoch_selection_is_not_supported_by_hpo_or_two_stage(filename,
     ("filename", "command"),
     [
         ("train.yaml", "train"),
+        ("train_spatial.yaml", "train"),
         ("compare.yaml", "crossval"),
         ("two_stage.yaml", "two-stage"),
         ("hpo.yaml", "hpo"),
@@ -189,7 +195,15 @@ def test_checkpoint_export_requires_a_boolean(value):
 
 @pytest.mark.parametrize(
     "filename",
-    ["train.yaml", "compare.yaml", "hpo.yaml", "two_stage.yaml", "evaluate.yaml", "split.yaml"],
+    [
+        "train.yaml",
+        "train_spatial.yaml",
+        "compare.yaml",
+        "hpo.yaml",
+        "two_stage.yaml",
+        "evaluate.yaml",
+        "split.yaml",
+    ],
 )
 def test_all_example_random_seeds_are_42(filename):
     config = load_config(Path(__file__).resolve().parents[1] / "configs" / filename)
@@ -199,3 +213,28 @@ def test_all_example_random_seeds_are_42(filename):
         assert config["seed"] == 42
     if filename == "hpo.yaml":
         assert config["hpo"]["seed"] == 42
+
+
+def test_spatial_experiment_changes_only_model_and_run_name():
+    root = Path(__file__).resolve().parents[1] / "configs"
+    original = load_config(root / "train.yaml")
+    spatial = load_config(root / "train_spatial.yaml")
+    validate_config(spatial, "train")
+    assert original["model"]["name"] == "fusion3d"
+    assert spatial["model"] == {
+        "name": "fusion3d_spatial",
+        "params": {
+            "num_classes": 2,
+            "dropout": 0.5,
+            "embedding_dim": 128,
+            "num_heads": 4,
+            "attention_dropout": 0.1,
+            "pretrained": True,
+        },
+    }
+    assert spatial["data"] == original["data"]
+    assert spatial["training"] == original["training"]
+    assert spatial["evaluation"] == original["evaluation"]
+    assert spatial["output"] == dict(original["output"], run_name="fusion3d_spatial")
+    assert spatial["seed"] == original["seed"] == 42
+    assert spatial["device"] == original["device"]

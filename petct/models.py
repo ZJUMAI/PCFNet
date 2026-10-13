@@ -72,6 +72,21 @@ class VolumeBackbone(nn.Module):
             volume = volume.unsqueeze(1)
         return self.network(volume)
 
+    def forward_features(self, volume: torch.Tensor) -> torch.Tensor:
+        """Return the final spatial feature map without global pooling."""
+
+        if volume.ndim == 4:
+            volume = volume.unsqueeze(1)
+        features = self.network.stem(volume)
+        for stage in (
+            self.network.layer1,
+            self.network.layer2,
+            self.network.layer3,
+            self.network.layer4,
+        ):
+            features = stage(features)
+        return features
+
 
 class BidirectionalCrossAttention(nn.Module):
     """Symmetric CT-to-PET and PET-to-CT feature attention."""
@@ -120,6 +135,101 @@ class PETCTFusionClassifier(nn.Module):
 
     def forward(self, ct: torch.Tensor, pet: torch.Tensor) -> torch.Tensor:
         return self.classifier(self.fusion(self.ct_backbone(ct), self.pet_backbone(pet)))
+
+
+def _validate_attention_dimensions(embedding_dim: int, num_heads: int) -> None:
+    if not isinstance(embedding_dim, int) or not isinstance(num_heads, int):
+        raise ConfigError("embedding_dim and num_heads must be integers")
+    if embedding_dim <= 0 or num_heads <= 0 or embedding_dim % num_heads:
+        raise ConfigError("embedding_dim must be positive and divisible by positive num_heads")
+
+
+class SpatialTokenEncoder(nn.Module):
+    """Pool a 3D feature map to 4x4x4 and project its 64 spatial tokens."""
+
+    num_tokens = 64
+
+    def __init__(self, feature_dim: int = 512, embedding_dim: int = 128):
+        super().__init__()
+        self.pool = nn.AdaptiveAvgPool3d((4, 4, 4))
+        self.projection = nn.Linear(feature_dim, embedding_dim)
+
+    def forward(self, features: torch.Tensor) -> torch.Tensor:
+        tokens = self.pool(features).flatten(2).transpose(1, 2)
+        return self.projection(tokens)
+
+
+class SpatialBidirectionalCrossAttention(nn.Module):
+    """One pre-normalized, bidirectional cross-attention block with residuals.
+
+    Both directions use the original normalized tokens, not sequential updates.
+    No gates, feed-forward blocks, or auxiliary prediction heads are added.
+    """
+
+    def __init__(self, embedding_dim: int = 128, num_heads: int = 4, dropout: float = 0.1):
+        super().__init__()
+        _validate_attention_dimensions(embedding_dim, num_heads)
+        self.ct_norm = nn.LayerNorm(embedding_dim)
+        self.pet_norm = nn.LayerNorm(embedding_dim)
+        self.ct_to_pet = nn.MultiheadAttention(
+            embedding_dim, num_heads, dropout=dropout, batch_first=True
+        )
+        self.pet_to_ct = nn.MultiheadAttention(
+            embedding_dim, num_heads, dropout=dropout, batch_first=True
+        )
+        self.residual_dropout = nn.Dropout(dropout)
+
+    def forward(self, ct: torch.Tensor, pet: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        ct_normalized = self.ct_norm(ct)
+        pet_normalized = self.pet_norm(pet)
+        ct_attended, _ = self.ct_to_pet(
+            ct_normalized, pet_normalized, pet_normalized, need_weights=False
+        )
+        pet_attended, _ = self.pet_to_ct(
+            pet_normalized, ct_normalized, ct_normalized, need_weights=False
+        )
+        return (
+            ct + self.residual_dropout(ct_attended),
+            pet + self.residual_dropout(pet_attended),
+        )
+
+
+class PETCTSpatialFusionClassifier(nn.Module):
+    """Dual R3D-18 streams with 64 low-dimensional spatial tokens per modality."""
+
+    def __init__(
+        self,
+        num_classes: int = 2,
+        dropout: float = 0.5,
+        embedding_dim: int = 128,
+        num_heads: int = 4,
+        attention_dropout: float = 0.1,
+        pretrained: bool = True,
+    ):
+        super().__init__()
+        # Validate attention dimensions before constructing/downloading backbones.
+        _validate_attention_dimensions(embedding_dim, num_heads)
+        self.ct_backbone = VolumeBackbone(pretrained)
+        self.pet_backbone = VolumeBackbone(pretrained)
+        self.ct_tokens = SpatialTokenEncoder(self.ct_backbone.feature_dim, embedding_dim)
+        self.pet_tokens = SpatialTokenEncoder(self.pet_backbone.feature_dim, embedding_dim)
+        self.fusion = SpatialBidirectionalCrossAttention(
+            embedding_dim, num_heads, dropout=attention_dropout
+        )
+        self.classifier = nn.Sequential(
+            nn.Linear(embedding_dim * 2, 256),
+            nn.LayerNorm(256),
+            nn.ReLU(inplace=True),
+            nn.Dropout(dropout),
+            nn.Linear(256, num_classes),
+        )
+
+    def forward(self, ct: torch.Tensor, pet: torch.Tensor) -> torch.Tensor:
+        ct_tokens = self.ct_tokens(self.ct_backbone.forward_features(ct))
+        pet_tokens = self.pet_tokens(self.pet_backbone.forward_features(pet))
+        ct_updated, pet_updated = self.fusion(ct_tokens, pet_tokens)
+        fused = torch.cat([ct_updated.mean(dim=1), pet_updated.mean(dim=1)], dim=1)
+        return self.classifier(fused)
 
 
 class DualStreamDenseNet(nn.Module):
@@ -201,6 +311,7 @@ class DualStreamFeatureExtractor(nn.Module):
 
 MODEL_REGISTRY = {
     "fusion3d": PETCTFusionClassifier,
+    "fusion3d_spatial": PETCTSpatialFusionClassifier,
     "densenet": DualStreamDenseNet,
     "feature_extractor": DualStreamFeatureExtractor,
 }

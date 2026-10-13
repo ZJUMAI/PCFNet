@@ -44,10 +44,66 @@ France 的 40 例名单已启用，单独使用 `PET_France/PETCT.xlsx`，编号
 - `evaluate`: aggregate metrics, Youden threshold, fold summary, paired DeLong, or
   checkpoint-based final external evaluation.
 
+## Spatial-token fusion experiment
+
+`train_spatial.yaml` selects the new registry entry `fusion3d_spatial`. The
+original `train.yaml` / `fusion3d` remains unchanged for comparison. Both use the
+same two R3D-18 backbones and preprocessing; the new version takes the last
+spatial maps before global pooling, then uses:
+
+- Exactly 64 tokens per modality, from adaptive 4 x 4 x 4 pooling.
+- Separate projections to `embedding_dim: 128` (must be divisible by `num_heads`).
+- One bidirectional Cross-Attention block with `num_heads: 4` and
+  `attention_dropout: 0.1`; both directions use the original normalized tokens.
+- Residual additions to each modality's own tokens, followed by separate token
+  means, concatenation, and the existing style of classification head.
+
+There are no gates, auxiliary heads, additional feed-forward blocks, or positional
+encodings. Data paths, metadata, manifests, loss, optimizer, scheduler, early
+stopping, and prediction schemas match `train.yaml`. Output is separated as
+`runs/fusion3d_spatial`. Default external selection remains `validation_best`,
+and `output.save_checkpoint` remains `false`. No performance improvement is
+assumed; use internal validation to compare architectures on the same folds.
+
+Run one fold or all five folds on the server:
+
+```bash
+CUDA_VISIBLE_DEVICES=5 python -m petct train --config configs/train_spatial.yaml \
+  --set device=cuda:0
+
+CUDA_VISIBLE_DEVICES=5 python -m petct crossval --config configs/train_spatial.yaml \
+  --set device=cuda:0 \
+  --set 'data.train.manifest=../dataset/generated_splits_5fold/fold_{fold}_train.txt' \
+  --set 'data.validation.manifest=../dataset/generated_splits_5fold/fold_{fold}_validation.txt' \
+  --set output.run_name=pcfnet_spatial_crossval
+```
+
+CUDA device indices inside Python are relative to `CUDA_VISIBLE_DEVICES`.
+For CPU runs, omit the environment assignment and set `device=cpu` instead.
+Enable `--set output.save_checkpoint=true` during training if later checkpoint
+evaluation is needed. Spatial-model checkpoints require the spatial model name
+and the same embedding dimension and head count; old global-fusion checkpoints
+are not compatible. For a saved single-fold spatial checkpoint:
+
+```bash
+python -m petct evaluate --config configs/evaluate.yaml \
+  --set model.name=fusion3d_spatial \
+  --set model.params.embedding_dim=128 \
+  --set model.params.num_heads=4 \
+  --set evaluate.checkpoint=../runs/fusion3d_spatial/best.pt \
+  --set evaluate.output=../runs/fusion3d_spatial/final_evaluation.json \
+  --set evaluate.prediction_directory=../runs/fusion3d_spatial/final_predictions
+```
+
+中文说明：新配置 `train_spatial.yaml` 每模态固定 64 个 token，128 维、4 个头、
+一层双向注意力和残差，不加其他融合模块。保留原模型和配置；数据路径及训练
+设置不变，独立输出到 `runs/fusion3d_spatial`。比较须使用同一划分。若显式导出
+模型，独立测试时须选择 `fusion3d_spatial` 和匹配的维度、头数，不能加载旧权重。
+
 ## Checkpoint export
 
 `output.save_checkpoint` is a Boolean and defaults to `false` in the shared
-engine and all four training configurations (`train`, `compare`, `hpo`, and
+engine and all training configurations (`train`, `train_spatial`, `compare`, `hpo`, and
 `two_stage`). Validation-best weights are copied to CPU memory and restored at
 the end of training, so metrics, external predictions, and two-stage feature
 extraction still use the correct model without reading or writing `best.pt`.
@@ -208,7 +264,8 @@ with seed 42 before starting a new experiment. Original cohort TXT files are
 preserved. DataLoader workers use distinct seeds deterministically derived
 from the base seed rather than identical random streams.
 
-The single-run commands `train`, `hpo`, and `two-stage` read fold 1 by default;
+The single-run commands `train` (including `train_spatial.yaml`), `hpo`, and
+`two-stage` read fold 1 by default;
 they do not automatically run all five folds. Override both manifest paths to
 select another fold. HPO remains validation-only and does not access external
 cohorts. Validation is used for checkpoint selection and early stopping.

@@ -207,7 +207,7 @@ def test_example_configurations_use_generated_five_fold_paths() -> None:
             assert resolve_config_path(compare, manifest) == output / pattern.format(
                 fold=fold, split=name
             )
-    for filename in ("train.yaml", "hpo.yaml", "two_stage.yaml"):
+    for filename in ("train.yaml", "train_spatial.yaml", "hpo.yaml", "two_stage.yaml"):
         config = load_config(root / "configs" / filename)
         for name in ("train", "validation"):
             assert resolve_config_path(config, config["data"][name]["manifest"]) == (

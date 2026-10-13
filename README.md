@@ -83,9 +83,31 @@ guide for limitations.
 
 ## Models and outputs
 
-The explicit registry provides `fusion3d`, `densenet`, and `feature_extractor`.
+The explicit registry provides `fusion3d`, `fusion3d_spatial`, `densenet`, and
+`feature_extractor`.
 TorchVision's weights API is used, and pretrained first-layer weights are expanded
 to the required input channels.
+
+`fusion3d` retains the original global-feature fusion for baseline comparisons.
+The experimental `fusion3d_spatial` retains both R3D-18 backbones but takes their
+spatial maps before global pooling. Each modality is pooled to 4 x 4 x 4 regions,
+projected to 64 tokens of dimension 128, and processed by one bidirectional,
+four-head cross-attention block with pre-normalization and residual connections.
+The updated tokens are mean-pooled, concatenated, and passed to the classification
+head. There are no gates, auxiliary heads, extra Transformer feed-forward blocks,
+or positional encodings in this first experimental version.
+
+```bash
+python -m petct train --config configs/train_spatial.yaml
+```
+
+This uses the same data, fold-1 manifests, optimizer, and training settings as
+`train.yaml`, with a separate `runs/fusion3d_spatial` output directory. Seed 42,
+three final-test cohorts, validation-only default selection, prediction export
+format, and opt-in checkpoint export are unchanged. Use the same folds for a fair
+comparison; the existing preprocessing and crop geometry are not modified.
+New spatial-model checkpoints are not interchangeable with global-fusion
+checkpoints. See the configuration guide for five-fold and checkpoint commands.
 
 By default, a run writes `resolved_config.yaml`, `metrics.json`, `history.csv`,
 and `run.log`, but does not write `best.pt`. The validation-best weights are
