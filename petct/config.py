@@ -125,6 +125,32 @@ def external_selection_mode(config: dict[str, Any]) -> str:
     return mode
 
 
+def repeated_holdout_parameters(settings: dict[str, Any]) -> tuple[int, float, str]:
+    """Validate repeated holdout count, validation fraction, and filename template."""
+
+    repeats = settings.get("repeats", 5)
+    if isinstance(repeats, bool) or not isinstance(repeats, int) or repeats < 1:
+        raise ConfigError("split.repeats must be a positive integer")
+    try:
+        fraction = float(settings.get("validation_fraction", 0.3))
+    except (TypeError, ValueError) as error:
+        raise ConfigError("split.validation_fraction must be between 0 and 1") from error
+    if not 0 < fraction < 1:
+        raise ConfigError("split.validation_fraction must be between 0 and 1")
+    pattern = settings.get("filename_pattern", "repeat_{fold}_{split}.txt")
+    if not isinstance(pattern, str) or "{fold}" not in pattern or "{split}" not in pattern:
+        raise ConfigError("Repeated holdout filename_pattern must contain {fold} and {split}")
+    if "/" in pattern or "\\" in pattern:
+        raise ConfigError("Repeated holdout filename_pattern must be a filename, not a path")
+    try:
+        pattern.format(fold=1, split="train")
+    except (KeyError, ValueError, IndexError) as error:
+        raise ConfigError(
+            "Repeated holdout filename_pattern contains unsupported fields"
+        ) from error
+    return repeats, fraction, pattern
+
+
 def validate_config(config: dict[str, Any], command: str) -> None:
     """Validate the command-level YAML contract before expensive work begins."""
 
@@ -185,6 +211,8 @@ def validate_config(config: dict[str, Any], command: str) -> None:
         ]
         if missing:
             raise ConfigError(f"split is missing keys: {', '.join(missing)}")
+        if config["split"].get("mode") == "repeated_holdout":
+            repeated_holdout_parameters(config["split"])
     else:
         raise ConfigError(f"Unknown command for validation: {command}")
 

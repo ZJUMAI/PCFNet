@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 import yaml
 
-from petct.config import ConfigError, load_config, resolve_config_path
+from petct.config import ConfigError, load_config, resolve_config_path, validate_config
 from petct.splits import run_split
 
 
@@ -213,3 +213,186 @@ def test_example_configurations_use_generated_five_fold_paths() -> None:
             assert resolve_config_path(config, config["data"][name]["manifest"]) == (
                 output / pattern.format(fold=1, split=name)
             )
+
+
+def test_repeated_70_30_holdouts_are_stratified_complete_and_reproducible(tmp_path):
+    config = _config(tmp_path)
+    config["split"].update(mode="repeated_holdout", repeats=5, validation_fraction=0.3)
+    summary = run_split(config)
+    assert summary["mode"] == "repeated_holdout"
+    assert summary["repeats"] == 5
+    assert summary["seed"] == 42
+    assert summary["validation_fraction"] == 0.3
+    assert "folds" not in summary
+    expected = {f"case_{i:03d}" for i in range(100)}
+    frame = pd.read_csv(tmp_path / "metadata.csv").set_index("patient_id")
+    outputs, validation_sets = {}, []
+    for repeat in range(1, 6):
+        train = _ids(tmp_path / f"splits/repeat_{repeat}_train.txt")
+        validation = _ids(tmp_path / f"splits/repeat_{repeat}_validation.txt")
+        assert len(train) == len(set(train)) == 70
+        assert len(validation) == len(set(validation)) == 30
+        assert set(train).isdisjoint(validation)
+        assert set(train) | set(validation) == expected
+        assert frame.loc[train, "label"].sum() == 21
+        assert frame.loc[validation, "label"].sum() == 9
+        assert summary["splits"][repeat - 1] == {
+            "repeat": repeat,
+            "train": {"cases": 70, "positive": 21, "negative": 49},
+            "validation": {"cases": 30, "positive": 9, "negative": 21},
+        }
+        outputs[repeat] = (train, validation)
+        validation_sets.append(frozenset(validation))
+    assert len(set(validation_sets)) == 5  # Not the same split five times with a reset RNG.
+    assert any(validation_sets[0] & other for other in validation_sets[1:])
+    summary_text = (tmp_path / "splits/summary.json").read_text(encoding="utf-8")
+    assert json.loads(summary_text) == summary
+    assert "case_" not in summary_text
+    run_split(config)
+    for repeat, (train, validation) in outputs.items():
+        assert _ids(tmp_path / f"splits/repeat_{repeat}_train.txt") == train
+        assert _ids(tmp_path / f"splits/repeat_{repeat}_validation.txt") == validation
+
+
+def test_repeated_holdout_defaults_are_five_repeats_70_30_and_seed_42(tmp_path):
+    config = _config(tmp_path)
+    config["split"]["mode"] = "repeated_holdout"
+    config["split"].pop("validation_fraction")
+    config["split"].pop("seed")
+    summary = run_split(config)
+    assert summary["repeats"] == 5
+    assert summary["validation_fraction"] == 0.3
+    assert summary["seed"] == 42
+    assert len(list((tmp_path / "splits").glob("repeat_*.txt"))) == 10
+
+
+def test_repeated_holdout_count_is_configurable(tmp_path):
+    config = _config(tmp_path)
+    config["split"].update(mode="repeated_holdout", repeats=3, validation_fraction=0.3)
+    assert run_split(config)["repeats"] == 3
+    assert len(list((tmp_path / "splits").glob("repeat_*.txt"))) == 6
+
+
+def test_70_30_yaml_generates_five_repeated_holdouts(tmp_path):
+    _config(tmp_path)
+    config = load_config(Path(__file__).resolve().parents[1] / "configs/split_70_30.yaml")
+    config["split"].update(
+        metadata=str(tmp_path / "metadata.csv"),
+        id_column="patient_id",
+        label_column="label",
+        source_manifests=None,
+        output_directory=str(tmp_path / "generated"),
+    )
+    validate_config(config, "split")
+    assert run_split(config)["repeats"] == 5
+    for repeat in range(1, 6):
+        assert len(_ids(tmp_path / f"generated/repeat_{repeat}_train.txt")) == 70
+        assert len(_ids(tmp_path / f"generated/repeat_{repeat}_validation.txt")) == 30
+
+
+def test_repeated_holdout_uses_only_source_manifest_cases(tmp_path):
+    config = _config(tmp_path)
+    eligible = [f"case_{i:03d}" for i in range(0, 100, 2)]
+    (tmp_path / "eligible.txt").write_text("\n".join(eligible), encoding="utf-8")
+    config["split"].update(
+        mode="repeated_holdout",
+        repeats=5,
+        validation_fraction=0.3,
+        source_manifests=["eligible.txt"],
+    )
+    assert run_split(config)["cases"] == 50
+    for repeat in range(1, 6):
+        train = _ids(tmp_path / f"splits/repeat_{repeat}_train.txt")
+        validation = _ids(tmp_path / f"splits/repeat_{repeat}_validation.txt")
+        assert len(train) == 35
+        assert len(validation) == 15
+        assert set(train).isdisjoint(validation)
+        assert set(train) | set(validation) == set(eligible)
+
+
+@pytest.mark.parametrize("fraction", [0, 1, -0.3, 1.2, None, float("nan"), "invalid"])
+def test_invalid_repeated_holdout_ratio_creates_no_outputs(tmp_path, fraction):
+    config = _config(tmp_path)
+    config["split"].update(mode="repeated_holdout", validation_fraction=fraction)
+    with pytest.raises(ConfigError, match="validation_fraction"):
+        run_split(config)
+    assert not (tmp_path / "splits").exists()
+
+
+@pytest.mark.parametrize("repeats", [0, -1, 5.1, "5", True, None])
+def test_invalid_repeat_count_creates_no_outputs(tmp_path, repeats):
+    config = _config(tmp_path)
+    config["split"].update(mode="repeated_holdout", repeats=repeats)
+    with pytest.raises(ConfigError, match="split.repeats"):
+        run_split(config)
+    assert not (tmp_path / "splits").exists()
+
+
+@pytest.mark.parametrize(
+    "pattern",
+    [
+        "{split}.txt",
+        "repeat_{fold}.txt",
+        "../repeat_{fold}_{split}.txt",
+        "repeat_{fold}_{split}_{unknown}.txt",
+    ],
+)
+def test_invalid_repeated_holdout_pattern_creates_no_outputs(tmp_path, pattern):
+    config = _config(tmp_path)
+    config["split"].update(mode="repeated_holdout", filename_pattern=pattern)
+    with pytest.raises(ConfigError, match="filename_pattern"):
+        run_split(config)
+    assert not (tmp_path / "splits").exists()
+
+
+def test_repeated_holdout_rejects_single_class_before_writing(tmp_path):
+    config = _config(tmp_path)
+    config["split"].update(mode="repeated_holdout", validation_fraction=0.3)
+    frame = pd.read_csv(tmp_path / "metadata.csv")
+    frame["label"] = 0
+    frame.to_csv(tmp_path / "metadata.csv", index=False)
+    with pytest.raises(ValueError, match="both binary classes"):
+        run_split(config)
+    assert not (tmp_path / "splits").exists()
+
+
+def test_repeated_holdout_cli_generates_five_70_30_splits(tmp_path):
+    config = _config(tmp_path)
+    config["split"].update(mode="repeated_holdout", repeats=5, validation_fraction=0.3)
+    path = tmp_path / "repeat.yaml"
+    path.write_text(yaml.safe_dump({"split": config["split"]}), encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, "-m", "petct", "split", "--config", str(path)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert len(list((tmp_path / "splits").glob("repeat_*.txt"))) == 10
+    assert len(_ids(tmp_path / "splits/repeat_1_train.txt")) == 70
+    assert len(_ids(tmp_path / "splits/repeat_1_validation.txt")) == 30
+
+
+def test_repeated_holdout_training_config_matches_generated_paths():
+    root = Path(__file__).resolve().parents[1] / "configs"
+    split = load_config(root / "split_70_30.yaml")
+    training = load_config(root / "train_spatial_70_30.yaml")
+    baseline = load_config(root / "train_spatial.yaml")
+    validate_config(split, "split")
+    validate_config(training, "crossval")
+    assert training["model"] == baseline["model"]
+    assert training["training"] == baseline["training"]
+    assert training["data"]["external"] == baseline["data"]["external"]
+    assert training["evaluation"] == baseline["evaluation"]
+    assert training["output"]["run_name"] != baseline["output"]["run_name"]
+    assert training["output"]["save_checkpoint"] is False
+    assert training["seed"] == split["split"]["seed"] == 42
+    assert training["cross_validation"]["folds"] == split["split"]["repeats"] == 5
+    output = resolve_config_path(split, split["split"]["output_directory"])
+    standard = load_config(root / "split.yaml")
+    assert output != resolve_config_path(standard, standard["split"]["output_directory"])
+    for repeat in range(1, 6):
+        for name in ("train", "validation"):
+            assert resolve_config_path(
+                training, training["data"][name]["manifest"].format(fold=repeat)
+            ) == (output / split["split"]["filename_pattern"].format(fold=repeat, split=name))

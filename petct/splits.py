@@ -6,10 +6,18 @@ import json
 from typing import Any
 
 import numpy as np
-from sklearn.model_selection import StratifiedKFold, train_test_split
+from sklearn.model_selection import StratifiedKFold, StratifiedShuffleSplit, train_test_split
 
-from .config import ConfigError, resolve_config_path
+from .config import ConfigError, repeated_holdout_parameters, resolve_config_path
 from .metadata import load_metadata, parse_binary_label
+
+
+def _class_counts(labels: np.ndarray, indices: np.ndarray) -> dict[str, int]:
+    return {
+        "cases": int(len(indices)),
+        "positive": int(labels[indices].sum()),
+        "negative": int((labels[indices] == 0).sum()),
+    }
 
 
 def run_split(config: dict[str, Any]) -> dict[str, Any]:
@@ -65,11 +73,31 @@ def run_split(config: dict[str, Any]) -> dict[str, Any]:
         pattern = str(settings.get("filename_pattern", "{split}.txt"))
         summary.update({"mode": mode, "seed": seed, "validation_fraction": validation_fraction})
         for name, indices in (("train", train_indices), ("validation", validation_indices)):
-            summary[name] = {
-                "cases": int(len(indices)),
-                "positive": int(labels[indices].sum()),
-                "negative": int((labels[indices] == 0).sum()),
+            summary[name] = _class_counts(labels, indices)
+    elif mode == "repeated_holdout":
+        repeats, validation_fraction, pattern = repeated_holdout_parameters(settings)
+        if np.unique(labels).size != 2:
+            raise ValueError("Repeated stratified holdout requires both binary classes")
+        splitter = StratifiedShuffleSplit(
+            n_splits=repeats, test_size=validation_fraction, random_state=seed
+        )
+        splits = list(splitter.split(identifiers, labels))
+        summary.update(
+            {
+                "mode": mode,
+                "seed": seed,
+                "repeats": repeats,
+                "validation_fraction": validation_fraction,
+                "splits": [
+                    {
+                        "repeat": repeat,
+                        "train": _class_counts(labels, train),
+                        "validation": _class_counts(labels, validation),
+                    }
+                    for repeat, (train, validation) in enumerate(splits, start=1)
+                ],
             }
+        )
     elif mode == "kfold":
         folds = int(settings.get("folds", 5))
         splitter = StratifiedKFold(n_splits=folds, shuffle=True, random_state=seed)
@@ -77,7 +105,7 @@ def run_split(config: dict[str, Any]) -> dict[str, Any]:
         pattern = str(settings.get("filename_pattern", "fold_{fold}_{split}.txt"))
         summary["folds"] = folds
     else:
-        raise ValueError("split.mode must be 'holdout' or 'kfold'")
+        raise ValueError("split.mode must be 'holdout', 'repeated_holdout', or 'kfold'")
     output = resolve_config_path(config, settings.get("output_directory", "dataset/splits"))
     output.mkdir(parents=True, exist_ok=True)
     for fold, (train_indices, validation_indices) in enumerate(splits, start=1):

@@ -158,7 +158,7 @@ def _format_fold_value(value: Any, fold: int) -> Any:
 
 
 def run_cross_validation(config: dict[str, Any]) -> dict[str, Any]:
-    """Run the registered model through identical sequential folds."""
+    """Run the registered model over numbered train/validation manifest pairs."""
 
     crossval = config.get("cross_validation", {})
     folds = int(crossval.get("folds", 5))

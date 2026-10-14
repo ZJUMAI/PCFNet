@@ -50,6 +50,7 @@ def test_training_schema_rejects_missing_split_fields() -> None:
     [
         ("train.yaml", "train"),
         ("train_spatial.yaml", "train"),
+        ("train_spatial_70_30.yaml", "crossval"),
         ("two_stage.yaml", "two-stage"),
         ("evaluate.yaml", "evaluate"),
     ],
@@ -170,6 +171,7 @@ def test_external_epoch_selection_is_not_supported_by_hpo_or_two_stage(filename,
     [
         ("train.yaml", "train"),
         ("train_spatial.yaml", "train"),
+        ("train_spatial_70_30.yaml", "crossval"),
         ("compare.yaml", "crossval"),
         ("two_stage.yaml", "two-stage"),
         ("hpo.yaml", "hpo"),
@@ -198,16 +200,18 @@ def test_checkpoint_export_requires_a_boolean(value):
     [
         "train.yaml",
         "train_spatial.yaml",
+        "train_spatial_70_30.yaml",
         "compare.yaml",
         "hpo.yaml",
         "two_stage.yaml",
         "evaluate.yaml",
         "split.yaml",
+        "split_70_30.yaml",
     ],
 )
 def test_all_example_random_seeds_are_42(filename):
     config = load_config(Path(__file__).resolve().parents[1] / "configs" / filename)
-    if filename == "split.yaml":
+    if filename.startswith("split"):
         assert config["split"]["seed"] == 42
     else:
         assert config["seed"] == 42
@@ -238,3 +242,12 @@ def test_spatial_experiment_changes_only_model_and_run_name():
     assert spatial["output"] == dict(original["output"], run_name="fusion3d_spatial")
     assert spatial["seed"] == original["seed"] == 42
     assert spatial["device"] == original["device"]
+
+
+def test_split_schema_rejects_invalid_repeat_count_before_metadata_loading():
+    config = load_config(
+        Path(__file__).resolve().parents[1] / "configs/split_70_30.yaml",
+        ["split.repeats=0"],
+    )
+    with pytest.raises(ConfigError, match="split.repeats"):
+        validate_config(config, "split")

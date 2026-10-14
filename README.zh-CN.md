@@ -27,6 +27,14 @@ python -m petct evaluate --config configs/evaluate.yaml
 `train`、`hpo`、`two-stage` 仍为单次运行，默认读取第 1 折。
 主模型五折运行方式见配置说明。
 
+另有五次重复分层 7:3 划分（不是标准五折 K-fold），不同次的验证病例可重叠。
+原五折默认方案和名单不改动。新增空间 token 模型配套配置可运行：
+
+```bash
+python -m petct split --config configs/split_70_30.yaml
+python -m petct crossval --config configs/train_spatial_70_30.yaml
+```
+
 可重复使用 `--set key=value` 覆盖 YAML，例如
 `--set training.optimizer.learning_rate=0.0002`。根目录原训练脚本仅为统一 API 的薄入口。
 

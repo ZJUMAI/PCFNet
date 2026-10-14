@@ -57,9 +57,58 @@ python -m petct evaluate --config configs/evaluate.yaml \
   --set evaluate.prediction_directory=../runs/fusion3d_spatial/final_predictions
 ```
 
+## 五次重复分层 7:3 划分
+
+仅新增 YAML 不能实现五次不同的 7:3 划分；代码已补充 `repeated_holdout` 模式。
+`split_70_30.yaml` 设置 `split.repeats: 5`、`validation_fraction: 0.3`、seed=42，
+使用 StratifiedShuffleSplit 一次初始化随机数生成器，再生成五次分层随机划分，
+不是每次重置同一种子、重复生成同一份名单。
+
+每次约 70% 训练、30% 验证，保留正负类比例。单次训练与验证无交集，但不同次
+的验证集可重叠，有些病例也可能一次都未进入验证。因此不属于标准五折 K-fold，
+论文应称为“五次重复分层随机 7:3 验证”。整数取整不可避免，208 例时每次是
+145 例训练、63 例验证。[官方说明](https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.StratifiedShuffleSplit.html)
+
+仍只使用原 `dataset/train.txt` 与 `dataset/valid.txt` 指定的内部病例，标签来自
+原 SPH Excel，三组外部队列不参与划分。新名单保存到独立目录
+`dataset/generated_splits_70_30_5repeats`，文件为 `repeat_1_train.txt`、
+`repeat_1_validation.txt` 至第 5 次，共 10 个 TXT；摘要仅记录匿名人数及类别数。
+新目录已加入 Git 忽略，原 TXT 与标准五折生成目录均保持不变。
+
+空间 token 模型的配套训练 YAML 为 `train_spatial_70_30.yaml`。模型参数、优化器、
+三组测试、预测导出、默认不存 `best.pt` 均不变，结果独立保存到
+`runs/fusion3d_spatial_70_30`。服务器运行：
+
+```bash
+python -m petct split --config configs/split_70_30.yaml
+CUDA_VISIBLE_DEVICES=5 python -m petct crossval --config configs/train_spatial_70_30.yaml \
+  --set device=cuda:0
+```
+
+复用原 `crossval` 执行器，`cross_validation.folds: 5`、`{fold}` 占位符、
+`fold_1`–`fold_5` 结果目录及 `cross_validation.json` 文件名沿用，但在本方案中
+它们表示五次重复实验，不表示验证病例互斥的五折。配套模板配置使用 `crossval`
+运行，不能直接 `train`；改变重复次数时同时调整 `split.repeats` 和
+`cross_validation.folds`。只跑一次时，用原 `train_spatial.yaml` 并覆盖两条 manifest
+为具体的 `repeat_1_train.txt` 和 `repeat_1_validation.txt`。
+
+原 PCFNet 同样可读取这批名单：
+
+```bash
+CUDA_VISIBLE_DEVICES=5 python -m petct crossval --config configs/train.yaml \
+  --set device=cuda:0 --set cross_validation.folds=5 \
+  --set 'data.train.manifest=../dataset/generated_splits_70_30_5repeats/repeat_{fold}_train.txt' \
+  --set 'data.validation.manifest=../dataset/generated_splits_70_30_5repeats/repeat_{fold}_validation.txt' \
+  --set output.run_name=pcfnet_70_30
+```
+
+建议报告各次结果及均值、标准差；不要把跨次重复病例的预测拼成额外独立患者。
+现有汇总文件里的正态近似 CI 字段，不能作为这些相关重复估计的正式患者级
+置信区间。外部测试默认仍不参与模型或 epoch 选择。
+
 ## 默认不保存 best.pt
 
-公共训练引擎及 `train.yaml`、`train_spatial.yaml`、`compare.yaml`、`hpo.yaml`、`two_stage.yaml` 均默认
+公共训练引擎及所有训练 YAML（含 `train_spatial_70_30.yaml`）均默认
 `output.save_checkpoint: false`。每次验证集 AUC 改善时，在 CPU 内存中复制
 最佳权重（包括模型 buffer）；结束后从内存恢复最佳模型，再测试或提取特征。
 不生成 `best.pt`，不从旧 checkpoint 读取权重；指标和预测文件格式保持不变。

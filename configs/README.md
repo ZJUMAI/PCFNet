@@ -100,10 +100,75 @@ python -m petct evaluate --config configs/evaluate.yaml \
 设置不变，独立输出到 `runs/fusion3d_spatial`。比较须使用同一划分。若显式导出
 模型，独立测试时须选择 `fusion3d_spatial` 和匹配的维度、头数，不能加载旧权重。
 
+## Five repeated stratified 70:30 holdouts
+
+`split_70_30.yaml` uses `split.mode: repeated_holdout`, `split.repeats: 5`,
+`split.validation_fraction: 0.3`, and seed 42. It uses StratifiedShuffleSplit
+to draw five reproducible stratified train/validation pairs from the eligible
+internal SPH cases. The RNG is initialized once, not reset before each draw.
+Only `dataset/train.txt` and `dataset/valid.txt` determine eligibility; the
+existing SPH label table supplies stratification labels. External cohorts are
+not included. [StratifiedShuffleSplit documentation](https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.StratifiedShuffleSplit.html)
+
+Every repeat has approximately 70% training and 30% validation, with disjoint
+sets within that repeat. Validation sets can overlap between repeats, and some
+cases may never be selected for validation. This is **five repetitions of
+stratified random holdout**, not disjoint five-fold cross-validation. Integer
+rounding is unavoidable: for 208 eligible cases, each repeat has 145 training
+and 63 validation cases.
+
+The new output directory is `dataset/generated_splits_70_30_5repeats`, containing
+`repeat_1_train.txt` / `repeat_1_validation.txt` through `repeat_5_train.txt` /
+`repeat_5_validation.txt`. An anonymous summary records repeat counts, ratio,
+seed, and per-repeat class counts. The directory is excluded from Git; original
+TXT files and the standard `generated_splits_5fold` directory are not changed.
+
+`train_spatial_70_30.yaml` keeps the spatial model and all existing training,
+external-evaluation, and export defaults, but selects these manifest templates
+and writes to `runs/fusion3d_spatial_70_30`. Use the existing `crossval` runner:
+
+```bash
+python -m petct split --config configs/split_70_30.yaml
+CUDA_VISIBLE_DEVICES=5 python -m petct crossval --config configs/train_spatial_70_30.yaml \
+  --set device=cuda:0
+```
+
+The runner's `cross_validation.folds: 5`, `{fold}` placeholder, `fold_1` through
+`fold_5` output directories, and `cross_validation.json` name are retained for
+compatibility; here their indices represent **repeats**, not disjoint folds.
+Use `crossval`, not `train`, with this templated configuration. Change both
+`split.repeats` and `cross_validation.folds` if changing the repetition count.
+For one repeat, use `train_spatial.yaml` with both paths overridden to concrete
+`repeat_1_train.txt` and `repeat_1_validation.txt` paths.
+
+Other registered models can use the same split files. For the original PCFNet:
+
+```bash
+CUDA_VISIBLE_DEVICES=5 python -m petct crossval --config configs/train.yaml \
+  --set device=cuda:0 --set cross_validation.folds=5 \
+  --set 'data.train.manifest=../dataset/generated_splits_70_30_5repeats/repeat_{fold}_train.txt' \
+  --set 'data.validation.manifest=../dataset/generated_splits_70_30_5repeats/repeat_{fold}_validation.txt' \
+  --set output.run_name=pcfnet_70_30
+```
+
+Report this as "five repeated stratified 70:30 holdouts". Do not concatenate
+validation predictions across repeats and treat repeated cases as distinct
+patients. Report per-repeat results and their mean/SD; the runner's existing
+normal-approximation CI fields are not a formal patient-level confidence interval
+for these dependent repeated estimates. External test data remain independent
+of training and epoch selection under the default policy.
+
+中文说明：新增 `repeated_holdout` 代码与 `split_70_30.yaml`，生成五次分层
+7:3 划分，seed=42，每次训练和验证无交集，但跨次验证可重叠，不保证每例恰好
+验证一次。空间模型配套 `train_spatial_70_30.yaml` 可直接用 `crossval` 运行。
+208 例时每次为 145 例训练、63 例验证。旧标准五折不变，新增名单目录不提交到 Git。
+论文写“五次重复分层随机 7:3 验证”，不能将重复病例当作额外独立样本。
+
 ## Checkpoint export
 
 `output.save_checkpoint` is a Boolean and defaults to `false` in the shared
-engine and all training configurations (`train`, `train_spatial`, `compare`, `hpo`, and
+engine and all training configurations (`train`, `train_spatial`,
+`train_spatial_70_30`, `compare`, `hpo`, and
 `two_stage`). Validation-best weights are copied to CPU memory and restored at
 the end of training, so metrics, external predictions, and two-stage feature
 extraction still use the correct model without reading or writing `best.pt`.
