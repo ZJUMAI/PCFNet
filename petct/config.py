@@ -125,6 +125,49 @@ def external_selection_mode(config: dict[str, Any]) -> str:
     return mode
 
 
+def leakage_simulation_settings(config: dict[str, Any]) -> dict[str, Any] | None:
+    """Validate explicit test-contamination settings without accessing any data."""
+
+    training = config.get("training", {})
+    if not isinstance(training, dict):
+        raise ConfigError("training must be a mapping")
+    settings = training.get("leakage_simulation", {})
+    location = "training.leakage_simulation"
+    if not isinstance(settings, dict):
+        raise ConfigError(f"{location} must be a mapping")
+    unknown = set(settings) - {"enabled", "samples_per_cohort", "cohorts"}
+    if unknown:
+        raise ConfigError(f"Unknown {location} keys: {', '.join(sorted(map(str, unknown)))}")
+    enabled = settings.get("enabled", False)
+    if not isinstance(enabled, bool):
+        raise ConfigError(f"{location}.enabled must be a YAML boolean")
+    count = settings.get("samples_per_cohort", 3)
+    if isinstance(count, bool) or not isinstance(count, int) or count < 1:
+        raise ConfigError(f"{location}.samples_per_cohort must be a positive integer")
+    cohorts = settings.get("cohorts")
+    if cohorts is not None and (
+        not isinstance(cohorts, list)
+        or not cohorts
+        or any(not isinstance(name, str) or not name.strip() for name in cohorts)
+        or len(cohorts) != len(set(cohorts))
+    ):
+        raise ConfigError(f"{location}.cohorts must be a non-empty list of unique cohort names")
+    if not enabled:
+        return None
+    external = config.get("data", {}).get("external", {})
+    if not isinstance(external, dict) or not external:
+        raise ConfigError("Leakage simulation requires non-empty data.external cohorts")
+    names = list(external) if cohorts is None else list(cohorts)
+    if any(name not in external for name in names):
+        raise ConfigError(f"{location}.cohorts must name groups in data.external")
+    evaluation = config.get("evaluation", {})
+    if not isinstance(evaluation, dict):
+        raise ConfigError("evaluation must be a mapping")
+    if not evaluation.get("external_after_training", True):
+        raise ConfigError("Leakage simulation requires evaluation.external_after_training=true")
+    return {"samples_per_cohort": count, "cohorts": names}
+
+
 def repeated_holdout_parameters(settings: dict[str, Any]) -> tuple[int, float, str]:
     """Validate repeated holdout count, validation fraction, and filename template."""
 
@@ -158,6 +201,9 @@ def validate_config(config: dict[str, Any], command: str) -> None:
         require_sections(config, "data", "model", "training", "output")
         checkpoint_saving_enabled(config)
         selection = external_selection_mode(config)
+        leakage = leakage_simulation_settings(config)
+        if leakage is not None and command not in {"train", "crossval"}:
+            raise ConfigError("Leakage simulation is supported only by train and crossval")
         if selection == "per_cohort_best_auc" and command in {"hpo", "two-stage"}:
             raise ConfigError(
                 "per_cohort_best_auc is supported only by train and crossval, not HPO or two-stage"

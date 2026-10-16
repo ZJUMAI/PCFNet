@@ -259,6 +259,65 @@ AUC 保留最佳轮次（并列保留最早一轮），最终指标与预测概�
 会使用测试集选模并高估测试表现，不应作为论文无偏终评；早停、调度及最佳模型
 仍只使用验证集。须在训练前开启，已有 `best.pt` 无法还原其他轮次的预测。
 
+## Opt-in test-leakage simulation
+
+This is a deliberately contaminated sensitivity experiment, not a valid way to
+report final generalization. It is disabled by default and supported only by
+`train` / `crossval`, including repeated 70:30 holdouts:
+
+```yaml
+training:
+  leakage_simulation:
+    enabled: false
+    samples_per_cohort: 3
+    # Optional; omit to use all configured data.external groups.
+    cohorts: [multi_hospital, france, SPH_test]
+```
+
+For example, append these options to the existing training command:
+
+```bash
+python -m petct crossval --config configs/train_spatial_70_30.yaml \
+  --set training.leakage_simulation.enabled=true \
+  --set training.leakage_simulation.samples_per_cohort=3
+```
+
+This adds **3 cases per group**, hence 9 additional training cases per epoch for
+the three default groups. `multi_hospital` is one pooled group: three cases are
+drawn from its combined members, not three per hospital. To use only one group,
+add `--set 'training.leakage_simulation.cohorts=[SPH_test]'`.
+
+Every epoch samples afresh without replacement within each selected group;
+cases can recur across epochs, and a new draw need not differ from the previous
+one. Sampling is uniform, not class-stratified. Draws use epoch-derived seeds
+from the configured seed (42 by default), independently of augmentation/shuffle
+RNG state. Each cross-validation run restarts this reproducible sequence.
+The original training cases plus only that epoch's draws are shuffled together.
+Draws do not accumulate in the training dataset, but model weights retain prior
+exposure: contamination accumulates over epochs. Drawn training copies use the
+same paired augmentation as the original training set; evaluation copies remain
+unaugmented and include **all** original test cases, including those drawn.
+
+Manifests, image folders, split files, existing output paths/names, metrics JSON,
+history columns, and prediction CSV schemas remain unchanged. No extra output
+files or case IDs are written for the simulation. The existing
+`resolved_config.yaml` and `run.log` record the setting and anonymous counts.
+Use a distinct `output.run_name` yourself if you need to preserve an earlier run;
+this option does not rename output directories automatically.
+
+It can be combined with `evaluation.external_selection=per_cohort_best_auc`,
+which introduces additional test-based selection bias. Validation still controls
+checkpoint selection, scheduling, and early stopping, but the resulting metrics
+are not unbiased. Disabled simulation never constructs training views of external
+data. Enabled simulation requires external evaluation/access, existing named
+groups, and a positive integer sample count no larger than any selected group.
+HPO and two-stage experiments reject this option rather than silently ignoring it.
+
+中文说明：默认关闭。开启后每轮从每个指定测试组不放回随机抽取若干例并加入原
+训练集，下一轮重新抽，不永久追加名单；跨轮可重复，模型也会保留以前的暴露。
+三家合并医院作为一组抽样。测试名单保持完整，输出格式及目录规则不变，仅在原有
+配置快照和日志记录开关。结果有数据污染，仅用于模拟，不能作为论文无偏终评。
+
 ## Final test prediction files
 
 The server `train.yaml` and `two_stage.yaml` configurations explicitly set

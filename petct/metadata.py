@@ -32,9 +32,9 @@ def load_metadata(path: Path, id_column: str, label_column: str) -> pd.DataFrame
         raise ConfigError(f"Metadata file does not exist: {path}")
     suffix = path.suffix.lower()
     if suffix == ".csv":
-        frame = pd.read_csv(path)
+        frame = pd.read_csv(path, dtype={id_column: "string"})
     elif suffix == ".xlsx":
-        frame = pd.read_excel(path)
+        frame = pd.read_excel(path, dtype={id_column: "string"})
     else:
         raise ConfigError(f"Unsupported metadata format {suffix}; use CSV or XLSX")
     missing = [column for column in (id_column, label_column) if column not in frame.columns]

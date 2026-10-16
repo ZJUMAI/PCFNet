@@ -126,6 +126,7 @@ def fit(
     logger: logging.Logger,
     epoch_callback: Callable[[int, dict[str, Any]], None] | None = None,
     *,
+    epoch_train_loader: Callable[[int], Any] | None = None,
     epoch_observer: Callable[[int, torch.nn.Module, torch.nn.Module, torch.device], None]
     | None = None,
 ) -> dict[str, Any]:
@@ -155,7 +156,8 @@ def fit(
     checkpoint_path = run_directory / "best.pt"
 
     for epoch in range(1, epochs + 1):
-        train_metrics, _, _ = train_epoch(model, train_loader, criterion, optimizer, device)
+        current_train_loader = epoch_train_loader(epoch) if epoch_train_loader else train_loader
+        train_metrics, _, _ = train_epoch(model, current_train_loader, criterion, optimizer, device)
         validation_metrics, _, _ = evaluate_loader(model, validation_loader, criterion, device)
         scheduler.step(float(validation_metrics["loss"]))
         auc = validation_metrics.get("auc")

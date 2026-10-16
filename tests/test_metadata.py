@@ -2,13 +2,14 @@ from pathlib import Path
 
 import pytest
 
-pytest.importorskip("pandas")
+pd = pytest.importorskip("pandas")
 pytest.importorskip("yaml")
 
 from petct.config import ConfigError, load_config
 from petct.metadata import (
     DEFAULT_NEGATIVE_VALUES,
     DEFAULT_POSITIVE_VALUES,
+    load_metadata,
     parse_binary_label,
 )
 
@@ -60,3 +61,17 @@ def test_example_configs_accept_chinese_and_numeric_labels(filename: str) -> Non
     }
     for value, expected in (("是", 1), ("否", 0), (1.0, 1), (0.0, 0)):
         assert parse_binary_label(value, positive, negative) == expected
+
+
+@pytest.mark.parametrize("suffix", [".csv", ".xlsx"])
+def test_metadata_preserves_text_ids_with_leading_zeros(tmp_path, suffix):
+    frame = pd.DataFrame({"id": ["003", "001", "12.0"], "label": [0, 1, 0]})
+    path = tmp_path / f"labels{suffix}"
+    if suffix == ".csv":
+        frame.to_csv(path, index=False)
+    else:
+        pytest.importorskip("openpyxl")
+        frame.to_excel(path, index=False)
+    metadata = load_metadata(path, "id", "label")
+    assert metadata.index.tolist() == ["003", "001", "12"]
+    assert metadata["label"].tolist() == [0, 1, 0]

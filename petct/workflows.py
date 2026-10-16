@@ -13,9 +13,15 @@ from petct.artifacts import (
     save_predictions,
     save_resolved_config,
 )
-from petct.config import ConfigError, external_selection_mode, require_sections
+from petct.config import (
+    ConfigError,
+    external_selection_mode,
+    leakage_simulation_settings,
+    require_sections,
+)
 from petct.data import loader_from_config, prediction_identifiers
 from petct.engine import evaluate_loader, fit, set_seed
+from petct.leakage import LeakageEpochLoader
 from petct.metrics import summarize_folds
 from petct.models import build_model
 from petct.selection import ExternalEpochSelector
@@ -62,6 +68,9 @@ def run_training(
     data = config["data"]
     if "train" not in data or "validation" not in data:
         raise ConfigError("data.train and data.validation are required")
+    leakage = leakage_simulation_settings(config)
+    if leakage is not None and not evaluate_external:
+        raise ConfigError("Leakage simulation cannot run when external access is disabled")
     set_seed(int(config.get("seed", 42)), bool(config.get("deterministic", True)))
     run_directory = run_directory or prepare_run_directory(config)
     run_directory.mkdir(parents=True, exist_ok=True)
@@ -69,13 +78,17 @@ def run_training(
     save_resolved_config(config, run_directory)
     train_loader = loader_from_config(config, data["train"], training=True)
     validation_loader = loader_from_config(config, data["validation"], training=False)
+    fit_options = {}
+    if leakage is not None:
+        fit_options["epoch_train_loader"] = LeakageEpochLoader(
+            config, train_loader, leakage, logger
+        )
     model = build_model(config)
     selection = external_selection_mode(config)
     evaluate_external = evaluate_external and bool(
         config.get("evaluation", {}).get("external_after_training", True)
     )
     selector = None
-    fit_options = {}
     if evaluate_external and selection == "per_cohort_best_auc":
         logger.warning(
             "External test labels are used for per-cohort epoch selection. "

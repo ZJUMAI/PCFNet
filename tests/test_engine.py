@@ -352,3 +352,82 @@ def test_zero_epochs_cannot_restore_a_stale_checkpoint(tmp_path):
             tmp_path,
             logger,
         )
+
+
+def test_fit_rebuilds_only_training_loader_before_each_epoch(tmp_path, monkeypatch):
+    events = []
+    original_loader, validation_loader = object(), object()
+
+    def epoch_loader(epoch):
+        events.append(("draw", epoch))
+        return epoch
+
+    def train(model, loader, *args):
+        events.append(("train", loader))
+        return {"loss": 0.4}, None, None
+
+    def evaluate(model, loader, *args):
+        assert loader is validation_loader
+        events.append(("validate", None))
+        return {"auc": 0.7, "loss": 0.3}, None, None
+
+    monkeypatch.setattr(engine, "train_epoch", train)
+    monkeypatch.setattr(engine, "evaluate_loader", evaluate)
+    engine.fit(
+        torch.nn.Linear(1, 2),
+        original_loader,
+        validation_loader,
+        {"device": "cpu", "training": {"epochs": 3, "early_stopping_patience": 0}},
+        tmp_path,
+        type("Logger", (), {"info": lambda *args, **kwargs: None})(),
+        epoch_train_loader=epoch_loader,
+    )
+    assert events == [
+        event
+        for epoch in (1, 2, 3)
+        for event in (("draw", epoch), ("train", epoch), ("validate", None))
+    ]
+
+
+def test_disabled_leakage_never_builds_external_training_views(tmp_path, monkeypatch):
+    config = _external_config()
+    config["training"]["leakage_simulation"] = {"enabled": False}
+    config["evaluation"]["external_after_training"] = False
+    monkeypatch.setattr(
+        workflows, "LeakageEpochLoader", lambda *args: pytest.fail("Leakage is disabled")
+    )
+    monkeypatch.setattr(workflows, "set_seed", lambda *args: None)
+    monkeypatch.setattr(
+        workflows, "loader_from_config", lambda root, split, training: split["name"]
+    )
+    monkeypatch.setattr(workflows, "build_model", lambda config: None)
+
+    def fit(*args, **kwargs):
+        assert "epoch_train_loader" not in kwargs
+        return dict(model=None, criterion=None, device="cpu", best_epoch=1, validation={"auc": 0.8})
+
+    monkeypatch.setattr(workflows, "fit", fit)
+    workflows.run_training(config, run_directory=tmp_path)
+
+
+def test_leakage_api_cannot_bypass_disabled_external_access(tmp_path, monkeypatch):
+    config = _external_config()
+    config["training"]["leakage_simulation"] = {"enabled": True}
+    monkeypatch.setattr(
+        workflows, "loader_from_config", lambda *args: pytest.fail("Must reject before data access")
+    )
+    with pytest.raises(workflows.ConfigError, match="external access is disabled"):
+        workflows.run_training(config, run_directory=tmp_path, evaluate_external=False)
+
+
+@pytest.mark.parametrize(
+    "module_name, function_name", [("hpo", "run_hpo"), ("two_stage", "run_two_stage")]
+)
+def test_leakage_is_rejected_by_hpo_and_two_stage_public_apis(module_name, function_name):
+    from importlib import import_module
+
+    module = import_module(f"petct.{module_name}")
+    config = _external_config()
+    config["training"]["leakage_simulation"] = {"enabled": True}
+    with pytest.raises(workflows.ConfigError, match="not supported"):
+        getattr(module, function_name)(config)

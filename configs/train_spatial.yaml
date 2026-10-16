@@ -61,6 +61,9 @@ model:
     pretrained: true
 
 training:
+  leakage_simulation:
+    enabled: false
+    samples_per_cohort: 3  # Per epoch, per data.external group; default: all groups.
   epochs: 100
   batch_size: 8
   num_workers: 4

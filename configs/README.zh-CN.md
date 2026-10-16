@@ -169,6 +169,50 @@ evaluation:
 运行单 checkpoint `evaluate` 不会还原这些跨轮次的概率。须在训练前开启该模式，
 旧 checkpoint 无法补算；HPO 和两阶段树模型流程不支持此模式。
 
+## 可选的数据泄露模拟
+
+默认关闭，仅支持 `train` / `crossval`（包含五次重复 7:3），用于对照模拟，
+不能作为论文无偏泛化性能。配置为：
+
+```yaml
+training:
+  leakage_simulation:
+    enabled: false
+    samples_per_cohort: 3
+    # 可省略 cohorts，默认使用 data.external 中的全部组。
+    cohorts: [multi_hospital, france, SPH_test]
+```
+
+运行示例：
+
+```bash
+python -m petct crossval --config configs/train_spatial_70_30.yaml \
+  --set training.leakage_simulation.enabled=true \
+  --set training.leakage_simulation.samples_per_cohort=3
+```
+
+这里是每组每轮抽 3 例，默认三组共加入 9 例。三家合并医院是一个整体，
+从合并的病例池抽 3 例，不是每家医院各抽 3 例。只用某组可额外设置
+`--set 'training.leakage_simulation.cohorts=[SPH_test]'`。
+
+每个 epoch 重新均匀随机抽取，组内不放回、不按标签分层；跨轮允许重复，也不保证
+新一轮名单与上一轮不同。使用配置 seed（默认 42）加 epoch 派生抽样与数据加载
+种子，独立于增强和打乱的随机状态；每次交叉验证训练重启这一可复现序列。
+原训练病例与当轮抽中的病例一起打乱训练，下一轮替换抽样子集，不累加数据集。
+但模型会保留之前的训练记忆，因此跨轮的数据污染会累积。
+抽中的训练副本使用与原训练集一致的 CT/PET 同步增强；测试副本不增强，最终仍
+评估全部测试病例，包括已经抽入训练的病例，不修改原始 TXT、影像或划分文件。
+
+输出目录规则、文件名、metrics JSON、history 列与预测 CSV 表头保持不变，不新增
+文件，也不额外保存抽中病例的编号。已有 `resolved_config.yaml` 记录配置，
+`run.log` 提示污染并记录匿名数量。若要保留原实验结果，请自行设置不同
+`output.run_name`，开关不会自动更名目录。
+
+可与 `evaluation.external_selection=per_cohort_best_auc` 同时使用，但会叠加测试集
+选模偏差。checkpoint、调度器、早停仍由验证集控制，不代表结果无偏。
+关闭时不会构建测试病例的训练副本；开启时要求允许外部测试访问、配置有效测试组，
+每组抽样数必须为正整数且不得超过该组人数。HPO 和两阶段会明确拒绝该模拟配置。
+
 ## 最终测试预测文件
 
 当前 `train.yaml`、`two_stage.yaml` 的 `output.save_predictions` 与

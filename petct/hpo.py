@@ -10,7 +10,7 @@ from typing import Any
 import yaml
 
 from .artifacts import prepare_run_directory, save_resolved_config
-from .config import public_config
+from .config import ConfigError, leakage_simulation_settings, public_config
 from .workflows import run_training
 
 
@@ -53,6 +53,8 @@ def _suggest(trial: Any, name: str, spec: dict[str, Any]) -> Any:
 
 def run_hpo(config: dict[str, Any]) -> dict[str, Any]:
     """Optimize validation AUC without constructing or reading an external loader."""
+    if leakage_simulation_settings(config) is not None:
+        raise ConfigError("Leakage simulation is not supported by HPO")
     try:
         import optuna
     except ImportError as error:

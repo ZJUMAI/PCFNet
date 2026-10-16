@@ -9,6 +9,7 @@ from petct.config import (
     apply_overrides,
     checkpoint_saving_enabled,
     external_selection_mode,
+    leakage_simulation_settings,
     load_config,
     resolve_config_path,
     validate_config,
@@ -251,3 +252,88 @@ def test_split_schema_rejects_invalid_repeat_count_before_metadata_loading():
     )
     with pytest.raises(ConfigError, match="split.repeats"):
         validate_config(config, "split")
+
+
+@pytest.mark.parametrize(
+    "filename", ["train.yaml", "train_spatial.yaml", "train_spatial_70_30.yaml", "compare.yaml"]
+)
+def test_leakage_simulation_is_disabled_by_default(filename):
+    config = load_config(Path(__file__).resolve().parents[1] / "configs" / filename)
+    assert config["training"]["leakage_simulation"]["enabled"] is False
+    assert leakage_simulation_settings(config) is None
+    assert leakage_simulation_settings({}) is None
+
+
+@pytest.mark.parametrize("command", ["train", "crossval"])
+def test_leakage_simulation_overrides_and_cohort_selection(command):
+    path = Path(__file__).resolve().parents[1] / "configs/train_spatial_70_30.yaml"
+    overrides = [
+        "training.leakage_simulation.enabled=true",
+        "training.leakage_simulation.samples_per_cohort=2",
+        "evaluation.external_selection=per_cohort_best_auc",
+    ]
+    config = load_config(path, overrides)
+    validate_config(config, command)
+    assert leakage_simulation_settings(config) == {
+        "samples_per_cohort": 2,
+        "cohorts": ["multi_hospital", "france", "SPH_test"],
+    }
+    config = load_config(path, [*overrides, "training.leakage_simulation.cohorts=[france]"])
+    assert leakage_simulation_settings(config)["cohorts"] == ["france"]
+
+
+@pytest.mark.parametrize(
+    "settings",
+    [
+        None,
+        [],
+        {"enabled": "false"},
+        {"enabled": 1},
+        {"samples_per_cohort": 0},
+        {"samples_per_cohort": -1},
+        {"samples_per_cohort": True},
+        {"samples_per_cohort": 1.5},
+        {"samples_per_cohort": "3"},
+        {"cohorts": "france"},
+        {"cohorts": []},
+        {"cohorts": ["france", "france"]},
+        {"cohorts": [{}]},
+        {"cohorts": [""]},
+        {"enabled": True, "cohorts": ["missing"]},
+        {"resample_each_epoch": False},
+    ],
+)
+def test_leakage_simulation_rejects_invalid_settings(settings):
+    config = {"training": {"leakage_simulation": settings}, "data": {"external": {"france": {}}}}
+    with pytest.raises(ConfigError, match="leakage_simulation"):
+        leakage_simulation_settings(config)
+
+
+@pytest.mark.parametrize("external", [None, {}, []])
+def test_leakage_simulation_requires_external_cohorts(external):
+    config = {
+        "training": {"leakage_simulation": {"enabled": True}},
+        "data": {"external": external},
+    }
+    with pytest.raises(ConfigError, match="data.external"):
+        leakage_simulation_settings(config)
+
+
+def test_leakage_simulation_requires_external_access():
+    config = {
+        "training": {"leakage_simulation": {"enabled": True}},
+        "data": {"external": {"france": {}}},
+        "evaluation": {"external_after_training": False},
+    }
+    with pytest.raises(ConfigError, match="external_after_training=true"):
+        leakage_simulation_settings(config)
+
+
+@pytest.mark.parametrize("command", ["hpo", "two-stage"])
+def test_leakage_simulation_is_rejected_outside_training_commands(command):
+    config = load_config(
+        Path(__file__).resolve().parents[1] / "configs/train.yaml",
+        ["training.leakage_simulation.enabled=true"],
+    )
+    with pytest.raises(ConfigError, match="supported only by train and crossval"):
+        validate_config(config, command)

@@ -91,6 +91,14 @@ unbiased final evaluation. The default is `validation_best`; validation-only
 checkpoint selection and early stopping remain unchanged. See the configuration
 guide for limitations.
 
+An explicit `training.leakage_simulation.enabled: true` switch is available for
+test-contamination sensitivity experiments only (default: false). Each epoch
+draws fresh labeled cases from selected external groups into training; original
+manifests and evaluation cohorts remain unchanged. Such results are contaminated,
+not unbiased generalization estimates. Existing output paths, metrics, and CSV
+schemas are preserved; the existing resolved config and log record the setting.
+See the configuration guide for sampling counts and cohort selection.
+
 ## Models and outputs
 
 The explicit registry provides `fusion3d`, `fusion3d_spatial`, `densenet`, and

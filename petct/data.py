@@ -221,8 +221,16 @@ def loader_from_config(
     config: dict[str, Any], split_config: dict[str, Any], *, training: bool
 ) -> DataLoader:
     dataset = dataset_from_config(config, split_config, training=training)
+    return loader_for_dataset(config, dataset, training=training)
+
+
+def loader_for_dataset(
+    config: dict[str, Any], dataset: Dataset, *, training: bool, seed: int | None = None
+) -> DataLoader:
+    """Use shared batching and worker settings for regular or epoch-local datasets."""
+
     training_config = config.get("training", {})
-    seed = int(config.get("seed", 42))
+    seed = int(config.get("seed", 42)) if seed is None else seed
 
     return DataLoader(
         dataset,

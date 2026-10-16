@@ -1,3 +1,5 @@
+import copy
+import json
 from pathlib import Path
 
 import pytest
@@ -11,6 +13,7 @@ pytest.importorskip("sklearn")
 
 from sklearn.linear_model import LogisticRegression
 
+import petct.engine as engine
 import petct.two_stage as two_stage
 import petct.workflows as workflows
 from petct.evaluation import run_evaluation
@@ -262,3 +265,137 @@ def test_final_external_predictions_and_checkpoint_export(
     assert tree_table["ground truth"].tolist() == [0, 1, 0, 1]
     expected_tree_auc = binary_metrics(tree_table["ground truth"], tree_table["预测概率"])["auc"]
     assert tree_result["external"][cohort_name]["auc"] == pytest.approx(expected_tree_auc)
+
+
+@pytest.mark.parametrize("selection", ["validation_best", "per_cohort_best_auc"])
+def test_leakage_end_to_end_preserves_all_output_schemas(tmp_path, monkeypatch, selection):
+    identifiers = [str(index) for index in range(1, 13)]
+    _images(tmp_path / "ct", identifiers, 0)
+    _images(tmp_path / "pet", identifiers, 0)
+    pd.DataFrame({"id": identifiers, "label": [0, 1] * 6}).to_csv(
+        tmp_path / "metadata.csv", index=False
+    )
+
+    def source(name, cases):
+        manifest = tmp_path / f"{name}.txt"
+        manifest.write_text("\n".join(cases) + "\n", encoding="utf-8")
+        return dict(manifest=manifest.name, metadata="metadata.csv", ct_root="ct", pet_root="pet")
+
+    training = source("train", identifiers[:4])
+    validation = source("valid", identifiers[4:6])
+    external = {
+        "multi_hospital": {
+            "members": {
+                "a": source("a", identifiers[6:7]),
+                "b": source("b", identifiers[7:8]),
+            }
+        },
+        "france": source("france", identifiers[8:10]),
+        "SPH_test": source("SPH_test", identifiers[10:]),
+    }
+    original_manifests = {path.name: path.read_bytes() for path in tmp_path.glob("*.txt")}
+    config = {
+        "_meta": {"config_dir": str(tmp_path)},
+        "seed": 42,
+        "device": "cpu",
+        "model": {"name": "tiny"},
+        "data": {
+            "id_column": "id",
+            "label_column": "label",
+            "depth": 4,
+            "image_size": 8,
+            "augment_probability": 0.0,
+            "train": training,
+            "validation": validation,
+            "external": external,
+        },
+        "training": {
+            "epochs": 3,
+            "early_stopping_patience": 0,
+            "batch_size": 2,
+            "num_workers": 0,
+            "loss": {"name": "cross_entropy"},
+            "leakage_simulation": {"enabled": True, "samples_per_cohort": 1},
+        },
+        "evaluation": {"external_selection": selection},
+        "output": {
+            "root": ".",
+            "run_name": "simulation",
+            "save_predictions": True,
+            "save_prediction_ids": True,
+        },
+    }
+    train_epoch = engine.train_epoch
+    draws = []
+
+    def record_training(model, loader, *args):
+        assert len(loader.dataset) == 7  # Original 4 plus 1 from each of the three groups.
+        assert loader.dataset.datasets[0].training is True
+        subsets = loader.dataset.datasets[1:]
+        for subset in subsets:
+            dataset = subset.dataset
+            members = dataset.datasets if hasattr(dataset, "datasets") else [dataset]
+            assert all(member.training is True for member in members)
+        draws.append([tuple(subset.indices) for subset in subsets])
+        return train_epoch(model, loader, *args)
+
+    monkeypatch.setattr(engine, "train_epoch", record_training)
+    monkeypatch.setattr(workflows, "build_model", lambda config: TinyPETCT())
+    result = workflows.run_training(config)
+    assert len(draws) == 3
+    assert len(set(map(tuple, draws))) > 1
+    directory = result["run_directory"]
+    assert directory == tmp_path / "simulation"  # No automatic directory suffix.
+    assert {path.name for path in directory.iterdir()} == {
+        "resolved_config.yaml",
+        "run.log",
+        "history.csv",
+        "metrics.json",
+        *{f"predictions_{name}.csv" for name in external},
+    }
+    metrics = json.loads((directory / "metrics.json").read_text(encoding="utf-8"))
+    assert set(metrics) == {"best_epoch", "validation", "external"}
+    assert set(metrics["external"]) == set(external)
+    for name, cases in zip(
+        external, [identifiers[6:8], identifiers[8:10], identifiers[10:]], strict=True
+    ):
+        table = pd.read_csv(directory / f"predictions_{name}.csv", dtype={"影像组学序列号": str})
+        assert table.columns.tolist() == [
+            "影像组学序列号",
+            "是否预测成功",
+            "预测概率",
+            "预测结果",
+            "ground truth",
+        ]
+        assert table["影像组学序列号"].tolist() == cases  # No drawn cases removed from testing.
+        assert set(metrics["external"][name]) == set(binary_metrics([0, 1], [0.2, 0.8])) | {"loss"}
+    history = pd.read_csv(directory / "history.csv")
+    assert len(history) == 3
+    assert not any("leakage" in column for column in history.columns)
+    assert "LEAKAGE SIMULATION ENABLED" in (directory / "run.log").read_text(encoding="utf-8")
+    assert "leakage_simulation:" in (directory / "resolved_config.yaml").read_text(encoding="utf-8")
+    assert {path.name: path.read_bytes() for path in tmp_path.glob("*.txt")} == original_manifests
+
+    crossval = copy.deepcopy(config)
+    repeats = 5
+    crossval["cross_validation"] = {"folds": repeats}
+    crossval["output"]["run_name"] = "repeats"
+    for split, cases in (("train", identifiers[:4]), ("validation", identifiers[4:6])):
+        for fold in range(1, repeats + 1):
+            source(f"{split}_{fold}", cases)
+        crossval["data"][split]["manifest"] = f"{split}_{{fold}}.txt"
+    draws.clear()
+    payload = workflows.run_cross_validation(crossval)
+    assert len(payload["folds"]) == repeats
+    assert set(payload) == {"folds", "summary"}
+    assert len(draws) == repeats * 3
+    assert all(draws[fold * 3 : (fold + 1) * 3] == draws[:3] for fold in range(repeats))
+    assert {path.name for path in (tmp_path / "repeats").iterdir()} == {
+        "resolved_config.yaml",
+        "cross_validation.json",
+        *{f"fold_{fold}" for fold in range(1, repeats + 1)},
+    }
+    for fold in range(1, repeats + 1):
+        assert {path.name for path in (tmp_path / f"repeats/fold_{fold}").iterdir()} == {
+            path.name for path in directory.iterdir()
+        }

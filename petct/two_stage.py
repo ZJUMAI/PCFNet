@@ -14,7 +14,7 @@ from .artifacts import (
     save_predictions,
     save_resolved_config,
 )
-from .config import ConfigError, external_selection_mode
+from .config import ConfigError, external_selection_mode, leakage_simulation_settings
 from .data import loader_from_config, prediction_identifiers
 from .engine import fit, resolve_device, set_seed
 from .metrics import binary_metrics
@@ -63,6 +63,8 @@ def _tree_classifier(config: dict[str, Any]) -> Any:
 
 
 def run_two_stage(config: dict[str, Any]) -> dict[str, Any]:
+    if leakage_simulation_settings(config) is not None:
+        raise ConfigError("Leakage simulation is not supported by two-stage experiments")
     if external_selection_mode(config) != "validation_best":
         raise ConfigError("Two-stage evaluation supports only validation_best external selection")
     seed = int(config.get("seed", 42))
