@@ -268,7 +268,10 @@ def test_final_external_predictions_and_checkpoint_export(
 
 
 @pytest.mark.parametrize("selection", ["validation_best", "per_cohort_best_auc"])
-def test_leakage_end_to_end_preserves_all_output_schemas(tmp_path, monkeypatch, selection):
+@pytest.mark.parametrize("individual_counts", [False, True])
+def test_leakage_end_to_end_preserves_all_output_schemas(
+    tmp_path, monkeypatch, selection, individual_counts
+):
     identifiers = [str(index) for index in range(1, 13)]
     _images(tmp_path / "ct", identifiers, 0)
     _images(tmp_path / "pet", identifiers, 0)
@@ -325,13 +328,20 @@ def test_leakage_end_to_end_preserves_all_output_schemas(tmp_path, monkeypatch, 
             "save_prediction_ids": True,
         },
     }
+    if individual_counts:
+        config["training"]["leakage_simulation"]["cohort_samples"] = {
+            "multi_hospital": 2,
+            "france": 1,
+            "SPH_test": 0,
+        }
     train_epoch = engine.train_epoch
     draws = []
 
     def record_training(model, loader, *args):
-        assert len(loader.dataset) == 7  # Original 4 plus 1 from each of the three groups.
+        assert len(loader.dataset) == 7  # Original 4 plus 3 total drawn test cases.
         assert loader.dataset.datasets[0].training is True
         subsets = loader.dataset.datasets[1:]
+        assert [len(subset) for subset in subsets] == ([2, 1] if individual_counts else [1, 1, 1])
         for subset in subsets:
             dataset = subset.dataset
             members = dataset.datasets if hasattr(dataset, "datasets") else [dataset]

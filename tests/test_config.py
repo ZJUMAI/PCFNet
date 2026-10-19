@@ -277,6 +277,7 @@ def test_leakage_simulation_overrides_and_cohort_selection(command):
     assert leakage_simulation_settings(config) == {
         "samples_per_cohort": 2,
         "cohorts": ["multi_hospital", "france", "SPH_test"],
+        "cohort_samples": {"multi_hospital": 2, "france": 2, "SPH_test": 2},
     }
     config = load_config(path, [*overrides, "training.leakage_simulation.cohorts=[france]"])
     assert leakage_simulation_settings(config)["cohorts"] == ["france"]
@@ -337,3 +338,75 @@ def test_leakage_simulation_is_rejected_outside_training_commands(command):
     )
     with pytest.raises(ConfigError, match="supported only by train and crossval"):
         validate_config(config, command)
+
+
+def test_leakage_counts_can_be_set_independently_with_cli_overrides():
+    path = Path(__file__).resolve().parents[1] / "configs/train.yaml"
+    config = load_config(
+        path,
+        [
+            "training.leakage_simulation.enabled=true",
+            "training.leakage_simulation.samples_per_cohort=10",
+            "training.leakage_simulation.cohort_samples.multi_hospital=5",
+            "training.leakage_simulation.cohort_samples.france=2",
+            "training.leakage_simulation.cohort_samples.SPH_test=0",
+        ],
+    )
+    validate_config(config, "train")
+    assert leakage_simulation_settings(config)["cohort_samples"] == {
+        "multi_hospital": 5,
+        "france": 2,
+        "SPH_test": 0,
+    }
+
+
+def test_leakage_individual_counts_fall_back_to_uniform_count():
+    path = Path(__file__).resolve().parents[1] / "configs/train.yaml"
+    config = load_config(
+        path,
+        [
+            "training.leakage_simulation.enabled=true",
+            "training.leakage_simulation.samples_per_cohort=10",
+            "training.leakage_simulation.cohort_samples.france=0",
+        ],
+    )
+    assert leakage_simulation_settings(config)["cohort_samples"] == {
+        "multi_hospital": 10,
+        "france": 0,
+        "SPH_test": 10,
+    }
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        None,
+        [],
+        True,
+        {"france": -1},
+        {"france": True},
+        {"france": 1.5},
+        {"france": "2"},
+        {"": 1},
+        {1: 2},
+    ],
+)
+def test_leakage_individual_counts_reject_invalid_types(overrides):
+    config = {"training": {"leakage_simulation": {"cohort_samples": overrides}}}
+    with pytest.raises(ConfigError, match="cohort_samples"):
+        leakage_simulation_settings(config)
+
+
+@pytest.mark.parametrize(
+    "settings, message",
+    [
+        ({"cohort_samples": {"missing": 1}}, "name groups in data.external"),
+        ({"cohorts": ["france"], "cohort_samples": {"SPH_test": 1}}, "unselected cohorts"),
+        ({"cohort_samples": {"multi_hospital": 0, "france": 0, "SPH_test": 0}}, "positive count"),
+    ],
+)
+def test_leakage_individual_counts_reject_invalid_selection(settings, message):
+    config = load_config(Path(__file__).resolve().parents[1] / "configs/train.yaml")
+    config["training"]["leakage_simulation"].update(settings, enabled=True)
+    with pytest.raises(ConfigError, match=message):
+        leakage_simulation_settings(config)

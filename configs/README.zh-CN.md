@@ -179,6 +179,7 @@ training:
   leakage_simulation:
     enabled: false
     samples_per_cohort: 3
+    cohort_samples: {}  # 可分别覆盖各组数量，0 表示不从该组抽样。
     # 可省略 cohorts，默认使用 data.external 中的全部组。
     cohorts: [multi_hospital, france, SPH_test]
 ```
@@ -194,6 +195,34 @@ python -m petct crossval --config configs/train_spatial_70_30.yaml \
 这里是每组每轮抽 3 例，默认三组共加入 9 例。三家合并医院是一个整体，
 从合并的病例池抽 3 例，不是每家医院各抽 3 例。只用某组可额外设置
 `--set 'training.leakage_simulation.cohorts=[SPH_test]'`。
+
+三组单独设置数量使用 `cohort_samples`，例如：
+
+```yaml
+training:
+  leakage_simulation:
+    enabled: true
+    samples_per_cohort: 3
+    cohort_samples:
+      multi_hospital: 10
+      france: 5
+      SPH_test: 0
+```
+
+也可在原运行命令后追加：
+
+```bash
+--set training.leakage_simulation.enabled=true \
+--set training.leakage_simulation.cohort_samples.multi_hospital=10 \
+--set training.leakage_simulation.cohort_samples.france=5 \
+--set training.leakage_simulation.cohort_samples.SPH_test=0
+```
+
+此例每轮共加入 15 例。单组设置优先于统一的 `samples_per_cohort`；未设置的组沿用
+统一数量，不会自动当作 0。设为 0 时不构建该组训练副本，但该组依然完整参与测试。
+若还设置了 `cohorts`，单组覆盖只能指定该列表中选中的组；未知或未选中组会报错。
+开启模拟时至少一组数量必须大于 0。示例 YAML 默认空映射，兼容旧命令和原有均匀
+数量下的抽样序列；随机种子、每轮重抽及输出格式不变，日志记录各组实际数量。
 
 每个 epoch 重新均匀随机抽取，组内不放回、不按标签分层；跨轮允许重复，也不保证
 新一轮名单与上一轮不同。使用配置 seed（默认 42）加 epoch 派生抽样与数据加载
@@ -211,7 +240,8 @@ python -m petct crossval --config configs/train_spatial_70_30.yaml \
 可与 `evaluation.external_selection=per_cohort_best_auc` 同时使用，但会叠加测试集
 选模偏差。checkpoint、调度器、早停仍由验证集控制，不代表结果无偏。
 关闭时不会构建测试病例的训练副本；开启时要求允许外部测试访问、配置有效测试组，
-每组抽样数必须为正整数且不得超过该组人数。HPO 和两阶段会明确拒绝该模拟配置。
+每组抽样数不得超过该组人数，单组覆盖允许为 0，统一回退数量仍须为正整数。
+HPO 和两阶段会明确拒绝该模拟配置。
 
 ## 最终测试预测文件
 

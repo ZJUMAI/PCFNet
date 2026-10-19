@@ -151,3 +151,40 @@ def test_leakage_epoch_subsets_reach_dataloader_workers(monkeypatch):
         loader = factory(epoch)
         expected = sorted(loader.dataset[index] for index in range(len(loader.dataset)))
         assert sorted(torch.cat(list(loader)).tolist()) == expected
+
+
+def test_leakage_uses_independent_counts_and_uniform_fallback(monkeypatch, caplog):
+    config = _config()
+    config["training"]["leakage_simulation"]["cohort_samples"] = {"pooled": 5}
+    with caplog.at_level(logging.INFO):
+        factory, _, built = _factory(config, monkeypatch)
+        loader = factory(1)
+    assert len(built) == 3
+    assert [len(subset) for subset in loader.dataset.datasets[1:]] == [5, 3]
+    assert len(loader.dataset) == 18
+    assert "sampled_test_cases=8" in caplog.text
+    first = _draws(loader)
+    assert _draws(factory(1)) == first
+    assert _draws(factory(2)) != first
+
+
+def test_zero_count_skips_building_that_cohorts_training_view(monkeypatch):
+    config = _config()
+    config["training"]["leakage_simulation"]["cohort_samples"] = {"pooled": 0, "single": 2}
+    factory, train, built = _factory(config, monkeypatch)
+    assert len(built) == 1
+    assert list(factory.sources) == ["single"]
+    assert len(train.dataset) == 10
+    for epoch in (1, 2):
+        loader = factory(epoch)
+        values = torch.cat(list(loader)).tolist()
+        assert len(values) == 12
+        assert all(value < 100 or 200 <= value < 220 for value in values)
+        assert [len(subset) for subset in loader.dataset.datasets[1:]] == [2]
+
+
+def test_individual_count_is_checked_against_its_own_group(monkeypatch):
+    config = _config()
+    config["training"]["leakage_simulation"]["cohort_samples"] = {"single": 21}
+    with pytest.raises(ConfigError, match="count \\(21\\) exceeds cohort 'single'"):
+        _factory(config, monkeypatch)

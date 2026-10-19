@@ -24,11 +24,14 @@ class LeakageEpochLoader:
     ) -> None:
         self.config = config
         self.train_dataset = train_loader.dataset
-        self.count = settings["samples_per_cohort"]
+        self.counts = settings["cohort_samples"]
         self.seed = int(config.get("seed", 42))
         self.logger = logger
         self.sources = {}
         for name in settings["cohorts"]:
+            count = self.counts[name]
+            if count == 0:
+                continue
             source = config["data"]["external"][name]
             validate_split_config(source, f"data.external.{name}", allow_groups=True)
             # Separate training views ensure paired augmentation never affects evaluation.
@@ -41,18 +44,18 @@ class LeakageEpochLoader:
                 )
             else:
                 dataset = dataset_from_config(config, source, training=True)
-            if self.count > len(dataset):
+            if count > len(dataset):
                 raise ConfigError(
-                    f"Leakage sample count ({self.count}) exceeds cohort {name!r} "
+                    f"Leakage sample count ({count}) exceeds cohort {name!r} "
                     f"size ({len(dataset)}); sampling is without replacement"
                 )
             self.sources[name] = dataset
         logger.warning(
             "LEAKAGE SIMULATION ENABLED: labeled test cases enter training every epoch; "
-            "test cohorts remain intact. External test metrics are contaminated, "
-            "not unbiased generalization performance. cohorts=%s samples_per_cohort=%d",
+            "test cohorts remain intact. Metrics on sampled test groups are contaminated, "
+            "not unbiased generalization performance. cohorts=%s cohort_samples=%s",
             ",".join(self.sources),
-            self.count,
+            self.counts,
         )
 
     def __call__(self, epoch: int) -> DataLoader:
@@ -60,8 +63,8 @@ class LeakageEpochLoader:
 
         rng = random.Random(self.seed + epoch)
         additions = [
-            Subset(dataset, rng.sample(range(len(dataset)), self.count))
-            for dataset in self.sources.values()
+            Subset(dataset, rng.sample(range(len(dataset)), self.counts[name]))
+            for name, dataset in self.sources.items()
         ]
         dataset = ConcatDataset([self.train_dataset, *additions])
         self.logger.info(
@@ -69,7 +72,7 @@ class LeakageEpochLoader:
             "sampled_test_cases=%d total_train_cases=%d",
             epoch,
             len(self.train_dataset),
-            self.count * len(self.sources),
+            sum(self.counts.values()),
             len(dataset),
         )
         return loader_for_dataset(self.config, dataset, training=True, seed=self.seed + epoch)

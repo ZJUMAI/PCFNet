@@ -97,7 +97,9 @@ draws fresh labeled cases from selected external groups into training; original
 manifests and evaluation cohorts remain unchanged. Such results are contaminated,
 not unbiased generalization estimates. Existing output paths, metrics, and CSV
 schemas are preserved; the existing resolved config and log record the setting.
-See the configuration guide for sampling counts and cohort selection.
+Use `training.leakage_simulation.cohort_samples` to set independent group counts
+(0 skips a group); unspecified groups retain `samples_per_cohort`. See the
+configuration guide for details.
 
 ## Models and outputs
 

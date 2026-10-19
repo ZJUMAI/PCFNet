@@ -135,7 +135,7 @@ def leakage_simulation_settings(config: dict[str, Any]) -> dict[str, Any] | None
     location = "training.leakage_simulation"
     if not isinstance(settings, dict):
         raise ConfigError(f"{location} must be a mapping")
-    unknown = set(settings) - {"enabled", "samples_per_cohort", "cohorts"}
+    unknown = set(settings) - {"enabled", "samples_per_cohort", "cohorts", "cohort_samples"}
     if unknown:
         raise ConfigError(f"Unknown {location} keys: {', '.join(sorted(map(str, unknown)))}")
     enabled = settings.get("enabled", False)
@@ -144,6 +144,14 @@ def leakage_simulation_settings(config: dict[str, Any]) -> dict[str, Any] | None
     count = settings.get("samples_per_cohort", 3)
     if isinstance(count, bool) or not isinstance(count, int) or count < 1:
         raise ConfigError(f"{location}.samples_per_cohort must be a positive integer")
+    overrides = settings.get("cohort_samples", {})
+    if not isinstance(overrides, dict):
+        raise ConfigError(f"{location}.cohort_samples must be a named count mapping")
+    for name, value in overrides.items():
+        if not isinstance(name, str) or not name.strip():
+            raise ConfigError(f"{location}.cohort_samples keys must be non-empty cohort names")
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ConfigError(f"{location}.cohort_samples.{name} must be a non-negative integer")
     cohorts = settings.get("cohorts")
     if cohorts is not None and (
         not isinstance(cohorts, list)
@@ -160,12 +168,19 @@ def leakage_simulation_settings(config: dict[str, Any]) -> dict[str, Any] | None
     names = list(external) if cohorts is None else list(cohorts)
     if any(name not in external for name in names):
         raise ConfigError(f"{location}.cohorts must name groups in data.external")
+    if any(name not in external for name in overrides):
+        raise ConfigError(f"{location}.cohort_samples must name groups in data.external")
+    if any(name not in names for name in overrides):
+        raise ConfigError(f"{location}.cohort_samples cannot override unselected cohorts")
+    counts = {name: overrides.get(name, count) for name in names}
+    if not any(counts.values()):
+        raise ConfigError(f"{location} requires at least one selected cohort with a positive count")
     evaluation = config.get("evaluation", {})
     if not isinstance(evaluation, dict):
         raise ConfigError("evaluation must be a mapping")
     if not evaluation.get("external_after_training", True):
         raise ConfigError("Leakage simulation requires evaluation.external_after_training=true")
-    return {"samples_per_cohort": count, "cohorts": names}
+    return {"samples_per_cohort": count, "cohorts": names, "cohort_samples": counts}
 
 
 def repeated_holdout_parameters(settings: dict[str, Any]) -> tuple[int, float, str]:

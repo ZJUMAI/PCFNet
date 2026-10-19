@@ -68,6 +68,7 @@ training:
   leakage_simulation:
     enabled: false
     samples_per_cohort: 3  # Per epoch, per data.external group; default: all groups.
+    cohort_samples: {}  # Optional per-group overrides; 0 disables sampling from a group.
   epochs: 100
   batch_size: 8
   num_workers: 4

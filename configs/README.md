@@ -270,6 +270,7 @@ training:
   leakage_simulation:
     enabled: false
     samples_per_cohort: 3
+    cohort_samples: {}  # Optional per-group count overrides; 0 skips a group.
     # Optional; omit to use all configured data.external groups.
     cohorts: [multi_hospital, france, SPH_test]
 ```
@@ -286,6 +287,38 @@ This adds **3 cases per group**, hence 9 additional training cases per epoch for
 the three default groups. `multi_hospital` is one pooled group: three cases are
 drawn from its combined members, not three per hospital. To use only one group,
 add `--set 'training.leakage_simulation.cohorts=[SPH_test]'`.
+
+To set independent counts, use `cohort_samples`. For example:
+
+```yaml
+training:
+  leakage_simulation:
+    enabled: true
+    samples_per_cohort: 3
+    cohort_samples:
+      multi_hospital: 10
+      france: 5
+      SPH_test: 0
+```
+
+Equivalent options to append to your existing command:
+
+```bash
+--set training.leakage_simulation.enabled=true \
+--set training.leakage_simulation.cohort_samples.multi_hospital=10 \
+--set training.leakage_simulation.cohort_samples.france=5 \
+--set training.leakage_simulation.cohort_samples.SPH_test=0
+```
+
+This draws 15 cases per epoch in total. Each named count overrides the shared
+`samples_per_cohort` value; omitted counts fall back to that shared value, not
+zero. A zero count skips constructing that group's training copy, but **does not
+remove it from evaluation**. `cohorts`, if supplied, still restricts eligible
+groups; overriding an unselected or unknown group is an error. At least one
+selected group must have a positive count when simulation is enabled. The empty
+override mapping in example configs preserves all previous uniform-count commands
+and their sampling sequence. Sampling seeds, resampling policy, and output schemas
+are unchanged. Logs now report the resolved anonymous counts for each group.
 
 Every epoch samples afresh without replacement within each selected group;
 cases can recur across epochs, and a new draw need not differ from the previous
@@ -310,7 +343,8 @@ which introduces additional test-based selection bias. Validation still controls
 checkpoint selection, scheduling, and early stopping, but the resulting metrics
 are not unbiased. Disabled simulation never constructs training views of external
 data. Enabled simulation requires external evaluation/access, existing named
-groups, and a positive integer sample count no larger than any selected group.
+groups, and integer counts no larger than their corresponding group sizes
+(per-group overrides may be zero; the shared fallback remains positive).
 HPO and two-stage experiments reject this option rather than silently ignoring it.
 
 中文说明：默认关闭。开启后每轮从每个指定测试组不放回随机抽取若干例并加入原
