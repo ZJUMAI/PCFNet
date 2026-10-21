@@ -354,6 +354,32 @@ HPO and two-stage experiments reject this option rather than silently ignoring i
 
 ## Final test prediction files
 
+### Validation probabilities for offline reevaluation
+
+Training and cross-validation default to `output.save_validation_predictions: true`,
+even for older custom configurations that omit this field. To disable export, append
+`--set output.save_validation_predictions=false` to your original training command.
+After `fit` restores the validation-AUC-best weights, an additional validation
+prediction pass writes `predictions_validation.csv` in each run/fold directory.
+It uses the existing identified five-column schema when `save_prediction_ids`
+is true, otherwise anonymous `label,probability`. This flag is independent
+of test prediction export and also defaults to true for library training callers
+and the comparison YAML. HPO trials keep export off by default; HPO-derived
+configurations explicitly containing false need an override to true for final training.
+These private prediction files remain gitignored.
+
+Only export is added: training, model selection, test metrics, prediction
+probabilities, and the fixed 0.5 decision rule are unchanged. No automatic Youden
+selection, threshold-analysis file, or rewriting of existing results is performed.
+Offline Youden selection needs this validation file's labels and probabilities,
+then applies the selected threshold to test probabilities from the **same model**.
+With `per_cohort_best_auc`, test files may come from different epochs and cannot
+blindly reuse the validation-best model's threshold. Old runs without saved
+validation probabilities or model weights cannot be reconstructed from aggregate
+metrics or external probabilities alone. New exports apply to future runs only.
+
+### External prediction files
+
 The server `train.yaml` and `two_stage.yaml` configurations explicitly set
 `output.save_predictions: true` and `output.save_prediction_ids: true`.
 `evaluate.yaml` sets the same flags under `evaluate`. Library defaults and HPO

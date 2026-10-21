@@ -245,6 +245,25 @@ HPO 和两阶段会明确拒绝该模拟配置。
 
 ## 最终测试预测文件
 
+### 保存验证集概率，后续离线重评
+
+训练和交叉验证默认开启 `output.save_validation_predictions: true`，旧自定义配置
+未包含此字段时同样生效。可在原训练命令后追加
+`--set output.save_validation_predictions=false` 关闭。恢复验证集 AUC 最佳模型后，
+仅额外进行一次无增强的验证集预测，每折输出目录新增 `predictions_validation.csv`。
+带编号时仍用原五列表头，匿名时用 `label,probability`，包含真实标签及未四舍五入的
+概率；是否带编号由 `save_prediction_ids` 控制。此开关独立于测试预测导出，普通
+训练 API 与 compare 配置默认开启。HPO trial 默认仍不导出；若 HPO 最佳配置
+显式包含 false，最终训练时需覆盖为 true。私有预测文件仍被 Git 忽略。
+
+训练、选模、测试指标和 0.5 判定规则不变；不自动找阈值、不生成阈值分析文件，
+也不改已有结果。离线找 Youden 阈值只需验证集真实标签和预测概率，再用该阈值
+重评同一模型的测试概率。若使用 `per_cohort_best_auc`，测试概率可能来自其他
+epoch，不能直接套用验证集最佳模型的阈值。旧结果若未保存验证概率和模型权重，
+仅凭汇总指标或外部概率无法恢复验证概率；新导出仅对后续运行生效。
+
+### 外部测试预测
+
 当前 `train.yaml`、`two_stage.yaml` 的 `output.save_predictions` 与
 `output.save_prediction_ids` 均已显式设为 `true`；`evaluate.yaml` 在 `evaluate`
 段启用相同开关。公共 API 与 HPO 仍默认关闭导出。关闭 `save_prediction_ids`

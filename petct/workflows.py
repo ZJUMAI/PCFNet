@@ -18,6 +18,7 @@ from petct.config import (
     external_selection_mode,
     leakage_simulation_settings,
     require_sections,
+    validation_prediction_export_enabled,
 )
 from petct.data import loader_from_config, prediction_identifiers
 from petct.engine import evaluate_loader, fit, set_seed
@@ -68,6 +69,7 @@ def run_training(
     data = config["data"]
     if "train" not in data or "validation" not in data:
         raise ConfigError("data.train and data.validation are required")
+    export_validation = validation_prediction_export_enabled(config)
     leakage = leakage_simulation_settings(config)
     if leakage is not None and not evaluate_external:
         raise ConfigError("Leakage simulation cannot run when external access is disabled")
@@ -133,6 +135,20 @@ def run_training(
         epoch_callback,
         **fit_options,
     )
+    if export_validation:
+        # fit has already restored the validation-AUC-best weights.
+        _, labels, probabilities = evaluate_loader(
+            fitted["model"], validation_loader, fitted["criterion"], fitted["device"]
+        )
+        save_predictions(
+            run_directory / "predictions_validation.csv",
+            labels,
+            probabilities,
+            True,
+            identifiers=prediction_identifiers(
+                validation_loader, bool(config["output"].get("save_prediction_ids", False))
+            ),
+        )
     results: dict[str, Any] = {
         "best_epoch": fitted["best_epoch"],
         "validation": fitted["validation"],

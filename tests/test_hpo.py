@@ -9,8 +9,12 @@ pytest.importorskip("optuna")
 import petct.hpo as hpo
 
 
-def test_optuna_objective_persistence_and_best_yaml(tmp_path: Path, monkeypatch) -> None:
+@pytest.mark.parametrize("export_validation", [None, True, False])
+def test_optuna_objective_persistence_and_best_yaml(
+    tmp_path: Path, monkeypatch, export_validation
+) -> None:
     def fake_training(config, *, epoch_callback, **kwargs):
+        assert config["output"]["save_validation_predictions"] is (export_validation is True)
         score = 1.0 - abs(float(config["training"]["learning_rate"]) - 0.01)
         epoch_callback(1, {"auc": score, "loss": 1.0 - score})
         return {"results": {"validation": {"auc": score, "loss": 1.0 - score}}}
@@ -30,6 +34,8 @@ def test_optuna_objective_persistence_and_best_yaml(tmp_path: Path, monkeypatch)
         },
         "output": {"root": ".", "run_name": "search"},
     }
+    if export_validation is not None:
+        config["output"]["save_validation_predictions"] = export_validation
     first = hpo.run_hpo(config)
     second = hpo.run_hpo(config)
     run_directory = tmp_path / "search_hpo"

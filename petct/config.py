@@ -125,6 +125,15 @@ def external_selection_mode(config: dict[str, Any]) -> str:
     return mode
 
 
+def validation_prediction_export_enabled(config: dict[str, Any]) -> bool:
+    """Validate validation prediction export, enabled by default for training."""
+
+    enabled = config.get("output", {}).get("save_validation_predictions", True)
+    if not isinstance(enabled, bool):
+        raise ConfigError("output.save_validation_predictions must be a YAML boolean")
+    return enabled
+
+
 def leakage_simulation_settings(config: dict[str, Any]) -> dict[str, Any] | None:
     """Validate explicit test-contamination settings without accessing any data."""
 
@@ -215,6 +224,7 @@ def validate_config(config: dict[str, Any], command: str) -> None:
     if command in {"train", "hpo", "crossval", "two-stage"}:
         require_sections(config, "data", "model", "training", "output")
         checkpoint_saving_enabled(config)
+        validation_prediction_export_enabled(config)
         selection = external_selection_mode(config)
         leakage = leakage_simulation_settings(config)
         if leakage is not None and command not in {"train", "crossval"}:

@@ -103,6 +103,16 @@ configuration guide for details.
 
 ## Models and outputs
 
+Training and cross-validation now default to `output.save_validation_predictions: true`,
+including older custom configurations that omit this field. After the validation-AUC-best model
+is restored, `predictions_validation.csv` saves its labels and probabilities
+alongside the existing test CSVs, inside each fold's output directory. This only
+adds an export: training, checkpoint selection, test metrics, and the 0.5 decision
+threshold remain unchanged. Use these matching validation/test predictions for
+offline threshold selection and reevaluation. Disable with
+`--set output.save_validation_predictions=false`. HPO trials keep export off by
+default; HPO-derived configurations explicitly containing false must override it to true.
+
 The explicit registry provides `fusion3d`, `fusion3d_spatial`, `densenet`, and
 `feature_extractor`.
 TorchVision's weights API is used, and pretrained first-layer weights are expanded

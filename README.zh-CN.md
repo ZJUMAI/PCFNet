@@ -74,6 +74,13 @@ metrics 与 CSV 格式均不变，不新增文件；已有配置快照和日志�
 `training.leakage_simulation.cohort_samples` 可单独设置三组数量（0 表示不抽取），
 未覆盖的组沿用 `samples_per_cohort`。抽样数量及队列选择方式见配置说明。
 
+训练和交叉验证默认开启 `output.save_validation_predictions: true`，
+未包含此字段的旧自定义配置同样生效。恢复验证集 AUC 最佳模型后，在每折输出
+目录增加 `predictions_validation.csv`，保存其真实标签和预测概率，方便离线选择
+阈值并重评对应测试概率。训练、选模、测试指标及 0.5 阈值均不改变。
+可用 `--set output.save_validation_predictions=false` 关闭。HPO trial 默认仍不导出；
+若 HPO 最佳配置显式包含 false，最终训练时需覆盖为 true。
+
 新增实验模型 `fusion3d_spatial`，原 `fusion3d` 保留作对照。保留两条 R3D-18
 backbone，取全局池化前的三维特征图，池化为 4×4×4 个区域，再投影为每模态
 64 个 128 维 token。使用一层双向、4 头 Cross-Attention 与残差连接；更新后的

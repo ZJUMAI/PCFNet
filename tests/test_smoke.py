@@ -119,6 +119,9 @@ def test_cpu_micro_end_to_end_workflows(tmp_path: Path, monkeypatch) -> None:
     train_result = workflows.run_training(config)
     assert train_result["results"]["validation"]["auc"] is not None
     assert not (train_result["run_directory"] / "best.pt").exists()
+    validation_table = pd.read_csv(train_result["run_directory"] / "predictions_validation.csv")
+    assert validation_table.columns.tolist() == ["label", "probability"]
+    assert validation_table["label"].tolist() == [0, 1]
 
     crossval_config = dict(config)
     crossval_config["data"] = dict(config["data"])
@@ -130,6 +133,9 @@ def test_cpu_micro_end_to_end_workflows(tmp_path: Path, monkeypatch) -> None:
     crossval_config["output"] = {"root": ".", "run_name": "crossval", "save_predictions": False}
     assert len(workflows.run_cross_validation(crossval_config)["folds"]) == 2
     assert not list((tmp_path / "crossval").rglob("*.pt"))
+    for fold in (1, 2):
+        table = pd.read_csv(tmp_path / f"crossval/fold_{fold}/predictions_validation.csv")
+        assert table["label"].tolist() == [0, 1]
 
     monkeypatch.setattr(two_stage, "build_model", lambda config: TinyPETCT())
     monkeypatch.setattr(two_stage, "_tree_classifier", lambda config: LogisticRegression())
@@ -326,6 +332,7 @@ def test_leakage_end_to_end_preserves_all_output_schemas(
             "run_name": "simulation",
             "save_predictions": True,
             "save_prediction_ids": True,
+            "save_validation_predictions": False,
         },
     }
     if individual_counts:
