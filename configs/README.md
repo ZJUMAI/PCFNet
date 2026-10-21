@@ -378,13 +378,32 @@ blindly reuse the validation-best model's threshold. Old runs without saved
 validation probabilities or model weights cannot be reconstructed from aggregate
 metrics or external probabilities alone. New exports apply to future runs only.
 
+### Original training scores
+
+`output.save_training_predictions` defaults to true for train/crossval and
+two-stage workflows, including custom configurations that omit it. Each run/fold
+writes `predictions_train.csv`. After the validation-AUC-best CNN weights are
+restored, train/crossval reconstructs `data.train` with `training=False`: original
+manifest order, no spatial augmentation, no shuffle, and no dropped final batch.
+It never reuses the epoch-specific leakage loader, so temporarily sampled test
+cases are excluded. This does not remove any influence of leakage on learned weights.
+Two-stage runs export the final tree's class-1 probabilities on original training features.
+
+The file uses the existing five identified columns when `save_prediction_ids`
+is true, otherwise anonymous `label,probability`. Score means the unrounded
+probability of pCR=1; decisions still use 0.5. This switch is independent of
+`save_predictions` and `save_validation_predictions`. Disable with
+`--set output.save_training_predictions=false`. HPO trials default to false;
+an explicitly disabled HPO-derived configuration needs an override for final training.
+No training metrics are added to `metrics.json` or cross-validation summaries.
+
 ### External prediction files
 
 The server `train.yaml` and `two_stage.yaml` configurations explicitly set
 `output.save_predictions: true` and `output.save_prediction_ids: true`.
 `evaluate.yaml` sets the same flags under `evaluate`. Library defaults and HPO
 remain disabled. Turn off `save_prediction_ids` for anonymous two-column CSVs,
-or turn off `save_predictions` to write no prediction files.
+or turn off `save_predictions` to write no external prediction files.
 
 Final external tests write one UTF-8-with-BOM CSV per cohort, using these columns
 in this order: `影像组学序列号`, `是否预测成功`, `预测概率`, `预测结果`, `ground truth`.

@@ -113,6 +113,14 @@ offline threshold selection and reevaluation. Disable with
 `--set output.save_validation_predictions=false`. HPO trials keep export off by
 default; HPO-derived configurations explicitly containing false must override it to true.
 
+Original training scores are also saved by default as `predictions_train.csv`
+(`output.save_training_predictions: true`). The validation-best model performs
+one unaugmented, sequential pass over the original training manifest only, even
+when leakage simulation adds external cases during training. The existing
+prediction schema and ID switch apply; training, epoch selection, and metric JSONs
+are unchanged. Two-stage runs export the final tree's training probabilities.
+HPO trials keep this export off by default. Set the flag to false to disable it.
+
 The explicit registry provides `fusion3d`, `fusion3d_spatial`, `densenet`, and
 `feature_extractor`.
 TorchVision's weights API is used, and pretrained first-layer weights are expanded
@@ -149,7 +157,7 @@ Previously saved checkpoints are not deleted or used to restore a new training r
 The training and two-stage server
 configurations explicitly enable final prediction CSVs with case IDs; the
 checkpoint evaluation configuration does the same. These private files are
-excluded from Git. The API remains opt-in: `save_predictions` enables export,
+excluded from Git. External test export remains opt-in: `save_predictions` enables it,
 and `save_prediction_ids` adds identified, five-column tables. With the latter
 disabled, exports contain only anonymous `label,probability` rows. HPO keeps
 prediction export disabled and does not access external cohorts.

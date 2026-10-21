@@ -122,6 +122,9 @@ def test_cpu_micro_end_to_end_workflows(tmp_path: Path, monkeypatch) -> None:
     validation_table = pd.read_csv(train_result["run_directory"] / "predictions_validation.csv")
     assert validation_table.columns.tolist() == ["label", "probability"]
     assert validation_table["label"].tolist() == [0, 1]
+    training_table = pd.read_csv(train_result["run_directory"] / "predictions_train.csv")
+    assert training_table.columns.tolist() == ["label", "probability"]
+    assert training_table["label"].tolist() == [0, 1, 0, 1]
 
     crossval_config = dict(config)
     crossval_config["data"] = dict(config["data"])
@@ -136,6 +139,8 @@ def test_cpu_micro_end_to_end_workflows(tmp_path: Path, monkeypatch) -> None:
     for fold in (1, 2):
         table = pd.read_csv(tmp_path / f"crossval/fold_{fold}/predictions_validation.csv")
         assert table["label"].tolist() == [0, 1]
+        training_table = pd.read_csv(tmp_path / f"crossval/fold_{fold}/predictions_train.csv")
+        assert training_table["label"].tolist() == [0, 1, 0, 1]
 
     monkeypatch.setattr(two_stage, "build_model", lambda config: TinyPETCT())
     monkeypatch.setattr(two_stage, "_tree_classifier", lambda config: LogisticRegression())
@@ -143,6 +148,8 @@ def test_cpu_micro_end_to_end_workflows(tmp_path: Path, monkeypatch) -> None:
     two_config["output"] = {"root": ".", "run_name": "two", "save_predictions": False}
     assert two_stage.run_two_stage(two_config)["validation"]["auc"] is not None
     assert not (tmp_path / "two_two_stage/best.pt").exists()
+    tree_training_table = pd.read_csv(tmp_path / "two_two_stage/predictions_train.csv")
+    assert tree_training_table["label"].tolist() == [0, 1, 0, 1]
 
     predictions = tmp_path / "predictions.csv"
     pd.DataFrame({"label": labels, "probability": np.linspace(0.1, 0.9, 6)}).to_csv(
@@ -358,6 +365,22 @@ def test_leakage_end_to_end_preserves_all_output_schemas(
 
     monkeypatch.setattr(engine, "train_epoch", record_training)
     monkeypatch.setattr(workflows, "build_model", lambda config: TinyPETCT())
+    evaluate_loader = workflows.evaluate_loader
+    training_exports = []
+
+    def record_evaluation(model, loader, *args):
+        dataset = loader.dataset
+        manifest = getattr(dataset, "manifest_path", None)
+        if manifest is not None and manifest.stem.startswith("train"):
+            assert dataset.training is False
+            assert dataset.augment_probability == 0.0
+            assert isinstance(loader.sampler, torch.utils.data.SequentialSampler)
+            assert not loader.drop_last
+            assert dataset.identifiers == identifiers[:4]
+            training_exports.append(list(dataset.identifiers))
+        return evaluate_loader(model, loader, *args)
+
+    monkeypatch.setattr(workflows, "evaluate_loader", record_evaluation)
     result = workflows.run_training(config)
     assert len(draws) == 3
     assert len(set(map(tuple, draws))) > 1
@@ -368,11 +391,16 @@ def test_leakage_end_to_end_preserves_all_output_schemas(
         "run.log",
         "history.csv",
         "metrics.json",
+        "predictions_train.csv",
         *{f"predictions_{name}.csv" for name in external},
     }
     metrics = json.loads((directory / "metrics.json").read_text(encoding="utf-8"))
     assert set(metrics) == {"best_epoch", "validation", "external"}
     assert set(metrics["external"]) == set(external)
+    training_table = pd.read_csv(directory / "predictions_train.csv", dtype={"影像组学序列号": str})
+    assert training_table["影像组学序列号"].tolist() == identifiers[:4]
+    assert not set(training_table["影像组学序列号"]).intersection(identifiers[4:])
+    assert training_exports == [identifiers[:4]]
     for name, cases in zip(
         external, [identifiers[6:8], identifiers[8:10], identifiers[10:]], strict=True
     ):
@@ -406,6 +434,7 @@ def test_leakage_end_to_end_preserves_all_output_schemas(
     assert len(payload["folds"]) == repeats
     assert set(payload) == {"folds", "summary"}
     assert len(draws) == repeats * 3
+    assert training_exports == [identifiers[:4]] * (repeats + 1)
     assert all(draws[fold * 3 : (fold + 1) * 3] == draws[:3] for fold in range(repeats))
     assert {path.name for path in (tmp_path / "repeats").iterdir()} == {
         "resolved_config.yaml",
@@ -413,6 +442,10 @@ def test_leakage_end_to_end_preserves_all_output_schemas(
         *{f"fold_{fold}" for fold in range(1, repeats + 1)},
     }
     for fold in range(1, repeats + 1):
+        training_table = pd.read_csv(
+            tmp_path / f"repeats/fold_{fold}/predictions_train.csv", dtype={"影像组学序列号": str}
+        )
+        assert training_table["影像组学序列号"].tolist() == identifiers[:4]
         assert {path.name for path in (tmp_path / f"repeats/fold_{fold}").iterdir()} == {
             path.name for path in directory.iterdir()
         }

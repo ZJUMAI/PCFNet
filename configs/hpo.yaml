@@ -51,6 +51,7 @@ hpo:
     model.params.dropout: {type: float, low: 0.2, high: 0.7}
 
 output:
+  save_training_predictions: false
   save_validation_predictions: false
   save_checkpoint: false
   root: ../runs

@@ -24,7 +24,7 @@ def _config():
         "model": {},
         "training": {},
         "evaluation": {"external_after_training": False},
-        "output": {"save_validation_predictions": True},
+        "output": {"save_validation_predictions": True, "save_training_predictions": False},
     }
 
 
@@ -101,7 +101,11 @@ def test_validation_export_preserves_metrics_and_uses_restored_model(
 def test_validation_export_can_be_disabled(tmp_path, monkeypatch):
     events, _, _, _ = _mock_training(monkeypatch)
     config = _config()
-    config["output"] = {"save_predictions": True, "save_validation_predictions": False}
+    config["output"] = {
+        "save_predictions": True,
+        "save_validation_predictions": False,
+        "save_training_predictions": False,
+    }
     workflows.run_training(config, run_directory=tmp_path)
     assert events == ["restored_best"]
     assert not (tmp_path / "predictions_validation.csv").exists()
@@ -111,7 +115,7 @@ def test_validation_export_can_be_disabled(tmp_path, monkeypatch):
 def test_validation_export_defaults_on_for_existing_configs(tmp_path, monkeypatch, output):
     events, _, _, _ = _mock_training(monkeypatch)
     config = _config()
-    config["output"] = output
+    config["output"] = {**output, "save_training_predictions": False}
     workflows.run_training(config, run_directory=tmp_path)
     assert events == ["restored_best", "export_best_validation"]
     assert (tmp_path / "predictions_validation.csv").is_file()

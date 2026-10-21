@@ -12,6 +12,7 @@ from petct.config import (
     leakage_simulation_settings,
     load_config,
     resolve_config_path,
+    training_prediction_export_enabled,
     validate_config,
     validate_split_config,
     validation_prediction_export_enabled,
@@ -439,3 +440,35 @@ def test_validation_export_defaults_on_and_can_be_disabled():
 def test_validation_export_requires_boolean(value):
     with pytest.raises(ConfigError, match="save_validation_predictions"):
         validation_prediction_export_enabled({"output": {"save_validation_predictions": value}})
+
+
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "train.yaml",
+        "train_spatial.yaml",
+        "train_spatial_70_30.yaml",
+        "compare.yaml",
+        "two_stage.yaml",
+    ],
+)
+def test_training_configs_export_original_training_predictions(filename):
+    config = load_config(Path(__file__).resolve().parents[1] / "configs" / filename)
+    assert training_prediction_export_enabled(config) is True
+
+
+def test_training_export_defaults_on_and_can_be_disabled():
+    assert training_prediction_export_enabled({}) is True
+    assert training_prediction_export_enabled({"output": {}}) is True
+    assert (
+        training_prediction_export_enabled({"output": {"save_training_predictions": False}})
+        is False
+    )
+    config = load_config(Path(__file__).resolve().parents[1] / "configs/hpo.yaml")
+    assert training_prediction_export_enabled(config) is False
+
+
+@pytest.mark.parametrize("value", [None, 1, "true", [], {}])
+def test_training_export_requires_boolean(value):
+    with pytest.raises(ConfigError, match="save_training_predictions"):
+        training_prediction_export_enabled({"output": {"save_training_predictions": value}})

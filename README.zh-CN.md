@@ -49,7 +49,7 @@ ID；CT/PET 根目录下必须存在同名病例目录，每个目录严格包�
 训练集 CT/PET 通过同一个 TorchIO `Subject` 做同步空间增强；验证集和外部队列不增强。
 HPO 不会构建或访问外部队列，也不保存逐例预测。当前服务器训练、两阶段和单独
 checkpoint 测试配置已显式开启逐例 CSV，包含病例编号，结果文件不提交到 Git。
-公共 API 仍默认关闭导出；`save_predictions` 控制是否导出，`save_prediction_ids`
+公共 API 仍默认关闭外部测试导出；`save_predictions` 控制外部测试导出，`save_prediction_ids`
 控制是否包含编号，关闭后者时只保存匿名 `label,probability` 两列。
 
 带编号 CSV 的五列表头为“影像组学序列号”“是否预测成功”“预测概率”“预测结果”
@@ -80,6 +80,12 @@ metrics 与 CSV 格式均不变，不新增文件；已有配置快照和日志�
 阈值并重评对应测试概率。训练、选模、测试指标及 0.5 阈值均不改变。
 可用 `--set output.save_validation_predictions=false` 关闭。HPO trial 默认仍不导出；
 若 HPO 最佳配置显式包含 false，最终训练时需覆盖为 true。
+
+原始训练集 score 也默认保存为 `predictions_train.csv`，开关为
+`output.save_training_predictions: true`。使用验证集最佳模型，无增强、按名单顺序
+预测原始训练 manifest；即使开启 leakage 模拟，也不会导出临时加入的外部病例。
+表头和编号开关与现有预测文件一致，训练、选模和指标 JSON 不变。两阶段流程保存
+最终树模型的训练概率；HPO trial 默认不导出。可将该开关设为 false 关闭。
 
 新增实验模型 `fusion3d_spatial`，原 `fusion3d` 保留作对照。保留两条 R3D-18
 backbone，取全局池化前的三维特征图，池化为 4×4×4 个区域，再投影为每模态

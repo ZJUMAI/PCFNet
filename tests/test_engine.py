@@ -58,7 +58,7 @@ def test_external_loader_is_not_built_when_final_evaluation_is_disabled(
         },
         "model": {},
         "training": {},
-        "output": {"save_validation_predictions": False},
+        "output": {"save_validation_predictions": False, "save_training_predictions": False},
         "evaluation": {"external_after_training": False},
     }
     monkeypatch.setattr(workflows, "set_seed", lambda *args: None)
@@ -180,6 +180,7 @@ def _external_config(mode="validation_best"):
             "save_predictions": True,
             "save_prediction_ids": True,
             "save_validation_predictions": False,
+            "save_training_predictions": False,
         },
         "evaluation": {"external_selection": mode},
     }

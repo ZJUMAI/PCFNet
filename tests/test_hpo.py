@@ -10,11 +10,13 @@ import petct.hpo as hpo
 
 
 @pytest.mark.parametrize("export_validation", [None, True, False])
+@pytest.mark.parametrize("export_training", [None, True, False])
 def test_optuna_objective_persistence_and_best_yaml(
-    tmp_path: Path, monkeypatch, export_validation
+    tmp_path: Path, monkeypatch, export_validation, export_training
 ) -> None:
     def fake_training(config, *, epoch_callback, **kwargs):
         assert config["output"]["save_validation_predictions"] is (export_validation is True)
+        assert config["output"]["save_training_predictions"] is (export_training is True)
         score = 1.0 - abs(float(config["training"]["learning_rate"]) - 0.01)
         epoch_callback(1, {"auc": score, "loss": 1.0 - score})
         return {"results": {"validation": {"auc": score, "loss": 1.0 - score}}}
@@ -36,6 +38,8 @@ def test_optuna_objective_persistence_and_best_yaml(
     }
     if export_validation is not None:
         config["output"]["save_validation_predictions"] = export_validation
+    if export_training is not None:
+        config["output"]["save_training_predictions"] = export_training
     first = hpo.run_hpo(config)
     second = hpo.run_hpo(config)
     run_directory = tmp_path / "search_hpo"

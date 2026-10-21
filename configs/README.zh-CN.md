@@ -262,12 +262,27 @@ HPO 和两阶段会明确拒绝该模拟配置。
 epoch，不能直接套用验证集最佳模型的阈值。旧结果若未保存验证概率和模型权重，
 仅凭汇总指标或外部概率无法恢复验证概率；新导出仅对后续运行生效。
 
+### 原始训练集 score
+
+`output.save_training_predictions` 对 train/crossval 和两阶段默认开启，旧自定义
+配置未包含该字段也生效。每次运行/每折新增 `predictions_train.csv`。
+train/crossval 恢复验证集 AUC 最佳 CNN 后，用 `training=False` 重新读取
+`data.train`：严格按原始名单顺序，无增强、不打乱、不丢最后一个 batch。
+不复用每轮 leakage loader，因此不导出模拟临时加入的外部病例；这并不消除
+泄露训练对模型权重的影响。两阶段保存最终树模型对原始训练特征的预测概率。
+
+`save_prediction_ids` 为 true 时使用原五列表头，否则为匿名 `label,probability`。
+score 为未四舍五入的 pCR=1 概率，预测结果仍按 0.5 判定。该开关独立于
+`save_predictions`、`save_validation_predictions`，可用
+`--set output.save_training_predictions=false` 关闭。HPO trial 默认关闭；若其最佳
+配置显式包含 false，最终训练需覆盖为 true。指标 JSON 和五折汇总结构不变。
+
 ### 外部测试预测
 
 当前 `train.yaml`、`two_stage.yaml` 的 `output.save_predictions` 与
 `output.save_prediction_ids` 均已显式设为 `true`；`evaluate.yaml` 在 `evaluate`
 段启用相同开关。公共 API 与 HPO 仍默认关闭导出。关闭 `save_prediction_ids`
-可仅导出匿名两列，关闭 `save_predictions` 则完全不保存逐例文件。
+可仅导出匿名两列，关闭 `save_predictions` 则不保存外部测试逐例文件。
 
 每个外部队列分别保存 UTF-8 BOM 编码的 CSV，五列表头依次为：
 “影像组学序列号”“是否预测成功”“预测概率”“预测结果”“ground truth”。

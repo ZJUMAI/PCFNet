@@ -14,7 +14,12 @@ from .artifacts import (
     save_predictions,
     save_resolved_config,
 )
-from .config import ConfigError, external_selection_mode, leakage_simulation_settings
+from .config import (
+    ConfigError,
+    external_selection_mode,
+    leakage_simulation_settings,
+    training_prediction_export_enabled,
+)
 from .data import loader_from_config, prediction_identifiers
 from .engine import fit, resolve_device, set_seed
 from .metrics import binary_metrics
@@ -63,6 +68,7 @@ def _tree_classifier(config: dict[str, Any]) -> Any:
 
 
 def run_two_stage(config: dict[str, Any]) -> dict[str, Any]:
+    export_training = training_prediction_export_enabled(config)
     if leakage_simulation_settings(config) is not None:
         raise ConfigError("Leakage simulation is not supported by two-stage experiments")
     if external_selection_mode(config) != "validation_best":
@@ -108,6 +114,16 @@ def run_two_stage(config: dict[str, Any]) -> dict[str, Any]:
     result: dict[str, Any] = {"validation": validation_metrics}
 
     output = config.get("output", {})
+    if export_training:
+        save_predictions(
+            run_directory / "predictions_train.csv",
+            train_labels,
+            classifier.predict_proba(train_features)[:, 1],
+            True,
+            identifiers=prediction_identifiers(
+                train_feature_loader, bool(output.get("save_prediction_ids", False))
+            ),
+        )
     save_predictions(
         run_directory / "predictions_validation.csv",
         validation_labels,

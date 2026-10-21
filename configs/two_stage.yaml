@@ -75,6 +75,7 @@ training:
   loss: {name: focal, alpha: 0.25, gamma: 2.0}
 
 output:
+  save_training_predictions: true
   save_checkpoint: false
   root: ../runs
   run_name: resnet_lightgbm

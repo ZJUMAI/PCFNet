@@ -91,6 +91,7 @@ def run_hpo(config: dict[str, Any]) -> dict[str, Any]:
         trial_config = copy.deepcopy(config)
         # HPO trials keep per-case exports opt-in, unlike final training runs.
         trial_config.setdefault("output", {}).setdefault("save_validation_predictions", False)
+        trial_config["output"].setdefault("save_training_predictions", False)
         for key, specification in search_space.items():
             if not isinstance(specification, dict):
                 raise ValueError(f"Search-space entry {key!r} must be a mapping")

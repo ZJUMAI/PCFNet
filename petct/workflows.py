@@ -18,6 +18,7 @@ from petct.config import (
     external_selection_mode,
     leakage_simulation_settings,
     require_sections,
+    training_prediction_export_enabled,
     validation_prediction_export_enabled,
 )
 from petct.data import loader_from_config, prediction_identifiers
@@ -70,6 +71,7 @@ def run_training(
     if "train" not in data or "validation" not in data:
         raise ConfigError("data.train and data.validation are required")
     export_validation = validation_prediction_export_enabled(config)
+    export_training = training_prediction_export_enabled(config)
     leakage = leakage_simulation_settings(config)
     if leakage is not None and not evaluate_external:
         raise ConfigError("Leakage simulation cannot run when external access is disabled")
@@ -135,18 +137,27 @@ def run_training(
         epoch_callback,
         **fit_options,
     )
-    if export_validation:
-        # fit has already restored the validation-AUC-best weights.
+    # fit has already restored the validation-AUC-best weights.
+    for split, enabled in (("validation", export_validation), ("train", export_training)):
+        if not enabled:
+            continue
+        # Rebuild the original training manifest in evaluation mode: no augmentation,
+        # shuffle, or cases temporarily added by LeakageEpochLoader.
+        prediction_loader = (
+            validation_loader
+            if split == "validation"
+            else loader_from_config(config, data["train"], training=False)
+        )
         _, labels, probabilities = evaluate_loader(
-            fitted["model"], validation_loader, fitted["criterion"], fitted["device"]
+            fitted["model"], prediction_loader, fitted["criterion"], fitted["device"]
         )
         save_predictions(
-            run_directory / "predictions_validation.csv",
+            run_directory / f"predictions_{split}.csv",
             labels,
             probabilities,
             True,
             identifiers=prediction_identifiers(
-                validation_loader, bool(config["output"].get("save_prediction_ids", False))
+                prediction_loader, bool(config["output"].get("save_prediction_ids", False))
             ),
         )
     results: dict[str, Any] = {

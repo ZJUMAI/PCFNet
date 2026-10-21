@@ -87,6 +87,7 @@ evaluation:
   external_selection: validation_best  # Opt-in exploratory mode: per_cohort_best_auc.
 
 output:
+  save_training_predictions: true
   save_validation_predictions: true
   save_checkpoint: false
   root: ../runs
