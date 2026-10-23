@@ -62,6 +62,15 @@ An HPO best configuration should keep `evaluation.external_after_training: false
 enable `output.save_checkpoint: true` during final training if you plan to use
 `configs/evaluate.yaml` for separate final checkpoint evaluation.
 
+## Random split-seed batches
+
+`python run_seed_sweep.py --runs 6 --sampler-seed 42 --gpus 3 5 --parallel 2`
+generates six independent split seeds, splits each group, then runs five-fold
+training with at most two groups in parallel. Each group has its own manifests,
+logs and outputs. Training seed remains the YAML's seed (42 by default).
+Use `--set` for training settings and `--dry-run` to inspect commands without
+running them. See [the batch guide](configs/README.md#random-split-seed-batches).
+
 ## Data contract
 
 The `metadata` setting can point directly to an existing CSV or XLSX label table;

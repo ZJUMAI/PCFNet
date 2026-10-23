@@ -1,5 +1,78 @@
 # Configuration Guide
 
+## Random split-seed batches
+
+Run from the repository root in the training environment. This script changes
+the **split seed only**; the model/loader/leakage seed remains the training YAML's
+`seed` (42 by default). Each group runs `split` successfully before `crossval`,
+and its five folds are sequential. Groups can run concurrently on separate GPUs.
+
+For six groups on GPU slots 3 and 5, retaining the requested exploratory settings:
+
+```bash
+python run_seed_sweep.py \
+  --config configs/train.yaml \
+  --split-config configs/split.yaml \
+  --runs 6 --sampler-seed 42 \
+  --gpus 3 5 --parallel 2 \
+  --set training.leakage_simulation.enabled=true \
+  --set training.leakage_simulation.cohort_samples.multi_hospital=2 \
+  --set training.leakage_simulation.cohort_samples.france=1 \
+  --set training.leakage_simulation.cohort_samples.SPH_test=3 \
+  --set evaluation.external_selection=per_cohort_best_auc
+```
+
+Do not prefix this command with a single `CUDA_VISIBLE_DEVICES` assignment.
+The scheduler gives each child its own environment and `device=cuda:0`.
+`--gpus` accepts space-separated or comma-separated slots. Default is GPU 3 and
+one concurrent group. Select free GPUs yourself; the script does not inspect
+other users' GPU use. To use one GPU, pass `--gpus 3 --parallel 1`. Sharing one GPU
+requires an explicit repeated ID such as `--gpus 3 3 --parallel 2`, and can exhaust
+GPU memory. Keep the default one-group-per-GPU policy unless memory permits sharing.
+
+Append `--dry-run` to print the full JSON plan without creating files, reading
+image/label contents, or starting any subprocess. `--sampler-seed 42` generates
+a repeatable list of distinct split seeds; omitting it draws fresh seeds. Use
+`--seeds 123 456` instead of `--runs` to replay selected recorded seeds. CUDA and
+hardware differences can still prevent bit-for-bit numerical reproducibility.
+
+Outputs are isolated under `output.root/seed_sweep_<UTC timestamp>/` by default:
+
+```text
+batch_summary.json
+configs/training.yaml
+configs/split.yaml
+pcfnet_crossval_seed_<seed>/
+  split.log
+  training.log
+  splits/                 # This group's manifests and split summary
+  resolved_config.yaml
+  cross_validation.json
+  fold_1/ ... fold_5/      # Usual metrics and train/validation/test scores
+```
+
+Effective YAML snapshots freeze user overrides and resolve input paths relative
+to the original YAMLs. Later edits to source YAMLs cannot change queued groups.
+The original split manifests are never overwritten. `--output-root` chooses the
+batch parent, `--batch-name` names a new batch directory, and `--run-prefix`
+defaults to `pcfnet_crossval`. An existing batch directory is rejected, never
+overwritten; there is no checkpoint-resume mode. Retry failed seeds in a new batch.
+
+`--set` applies to training, `--split-set` to splitting, and `--folds` controls
+both stages (default 5). Device, train/validation manifest patterns, output paths,
+and split seed/count/pattern are scheduler-managed and reject conflicting
+overrides. Both `kfold` and `repeated_holdout` split YAMLs are supported; a single
+holdout is rejected. Status, seeds, commands, GPU assignments and exit codes are
+recorded in `batch_summary.json`; a failed group does not stop the other groups.
+The overall exit code is nonzero if any group fails. Ctrl+C stops active batch
+subprocesses and their workers, marks queued work cancelled, and returns 130.
+
+**Do not choose a final split seed by external test performance.** No automatic
+seed ranking is performed. Leakage simulation and per-cohort test-based epoch
+selection remain exploratory; parallelization does not remove their bias.
+
+## Configuration fields
+
 All relative paths are resolved from the YAML file's directory. The server
 configurations use the existing radiomics XLSX label tables; `metadata` is the
 path to that existing table, not an additional file you need to create. The ID

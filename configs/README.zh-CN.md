@@ -1,5 +1,58 @@
 # 配置说明
 
+## 随机划分 seed 批量实验
+
+在训练环境、项目根目录运行。脚本只改变数据划分 seed，不改变训练 YAML 的
+`seed`（默认 42，因此模型、loader 和 leakage 抽样的 seed 仍沿用该值）。
+每组先成功运行 `split`，再运行 `crossval`；组内五折串行，组间可分配不同 GPU 并行。
+
+例如在 GPU 3 和 5 上并行两组，总共运行 6 组，保留你指定的探索性参数：
+
+```bash
+python run_seed_sweep.py \
+  --config configs/train.yaml \
+  --split-config configs/split.yaml \
+  --runs 6 --sampler-seed 42 \
+  --gpus 3 5 --parallel 2 \
+  --set training.leakage_simulation.enabled=true \
+  --set training.leakage_simulation.cohort_samples.multi_hospital=2 \
+  --set training.leakage_simulation.cohort_samples.france=1 \
+  --set training.leakage_simulation.cohort_samples.SPH_test=3 \
+  --set evaluation.external_selection=per_cohort_best_auc
+```
+
+不要再在命令前设置单张卡的 `CUDA_VISIBLE_DEVICES`：脚本会为每个子进程单独设置
+该环境变量，并使用 `cuda:0`。`--gpus` 支持空格或逗号分隔，默认 GPU 3、单组运行。
+请自行选择空闲 GPU，脚本不会查询其他用户的 GPU 使用情况。仅用一张卡时改为
+`--gpus 3 --parallel 1`；若确实要同卡并行，显式写 `--gpus 3 3 --parallel 2`，
+但可能显存不足，通常建议每张卡一组。
+
+追加 `--dry-run` 只预览完整 JSON 计划，不写文件、不读取标签/影像内容、不启动子进程。
+`--sampler-seed 42` 固定随机 seed 列表的生成过程；省略时每次生成新列表。
+用 `--seeds 123 456` 替代 `--runs`，可重跑指定的已记录划分。固定 seed 不保证跨
+CUDA 软件或硬件逐位一致。
+
+默认输出到 `output.root/seed_sweep_<UTC时间戳>/`。根目录包含 `batch_summary.json`
+以及冻结的 `configs/training.yaml`、`configs/split.yaml`；每个
+`pcfnet_crossval_seed_<seed>/` 中分别保存 `split.log`、`training.log`、独立
+`splits/`、正常五折结果和 train/validation/test score，不覆盖原始名单或其他组。
+配置快照保留用户覆盖参数，并按原 YAML 目录解析输入路径；排队时修改原 YAML
+不会改变本批实验。
+
+`--output-root` 指定批次父目录，`--batch-name` 指定新批次名，`--run-prefix`
+默认 `pcfnet_crossval`。已存在的批次目录会拒绝运行，不会覆盖，也不自动续训；
+失败 seed 可在新批次用 `--seeds` 重跑。`--set` 传训练参数，`--split-set` 传划分
+参数，`--folds` 同时控制两阶段折数（默认 5）。设备、名单模式、输出目录、划分
+seed 和折数由调度脚本管理，冲突覆盖会报错。支持 `kfold` 和 `repeated_holdout`
+的划分 YAML，不支持单次 holdout。
+
+状态、seed、完整命令、GPU 和退出码写入 `batch_summary.json`。某组失败后其他组
+继续，最终存在失败则返回非零退出码。Ctrl+C 会停止本批启动的子进程及 worker，
+取消排队任务并返回 130。**不能根据外部测试表现挑选最终划分 seed**；脚本不自动
+排名，泄露模拟和测试集选 epoch 的结果仍然有偏，只用于探索实验。
+
+## 配置字段
+
 所有相对路径均以 YAML 文件所在目录为基准。使用前请复制示例并指向本地未纳入版本
 控制的数据，切勿提交标签表。服务器配置已直接指向旧项目原有的 radiomics Excel；
 `metadata` 只是这张已有标签表的路径，不需要另建 `metadata.csv`。

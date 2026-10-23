@@ -38,6 +38,14 @@ python -m petct crossval --config configs/train_spatial_70_30.yaml
 可重复使用 `--set key=value` 覆盖 YAML，例如
 `--set training.optimizer.learning_rate=0.0002`。根目录原训练脚本仅为统一 API 的薄入口。
 
+## 随机划分 seed 批量实验
+
+`python run_seed_sweep.py --runs 6 --sampler-seed 42 --gpus 3 5 --parallel 2`
+自动生成 6 个不同的划分 seed，每组先划分再训练五折，最多两组同时运行。
+每组独立保存名单、日志和结果，不覆盖原名单。训练 seed 不变，继续使用 YAML
+中的 seed（默认 42）。`--set` 传训练参数，`--dry-run` 仅预览、不启动训练。
+完整参数及泄露模拟示例见[批量实验说明](configs/README.zh-CN.md#随机划分-seed-批量实验)。
+
 ## 数据与隐私约束
 
 `metadata` 直接指向已有 CSV/XLSX 标签表，不要求另建文件或转成 CSV。服务器配置
