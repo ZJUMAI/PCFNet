@@ -23,3 +23,8 @@ evaluation_predictions/
 dataset/generated_split_80_20/
 dataset/generated_splits_5fold/
 dataset/generated_splits_70_30_5repeats/
+
+# Imported legacy fusion assets contain private patient-level data.
+fusion/*
+!fusion/*.py
+!fusion/*.md
