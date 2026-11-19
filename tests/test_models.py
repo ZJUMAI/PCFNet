@@ -156,3 +156,84 @@ def test_invalid_spatial_attention_dimensions_fail_before_backbone_construction(
     )
     with pytest.raises(ConfigError, match="embedding_dim"):
         PETCTSpatialFusionClassifier(embedding_dim=embedding_dim, num_heads=num_heads)
+
+
+@pytest.mark.parametrize("stages", ["layer4", ["layer5"], ["layer4", "layer4"], [1], False])
+def test_invalid_backbone_stages_fail_before_weight_download(monkeypatch, stages):
+    monkeypatch.setattr(
+        "petct.models.r3d_18", lambda **kwargs: pytest.fail("Backbone must not be constructed")
+    )
+    with pytest.raises(ConfigError, match="backbone_trainable_stages"):
+        VolumeBackbone(trainable_stages=stages)
+
+
+def test_backbone_default_keeps_full_fine_tuning():
+    backbone = VolumeBackbone(pretrained=False).train()
+    assert all(parameter.requires_grad for parameter in backbone.parameters())
+    assert all(getattr(backbone.network, stage).training for stage in backbone.stages)
+
+
+def test_partial_backbone_freezing_keeps_frozen_batchnorm_in_eval():
+    backbone = VolumeBackbone(pretrained=False, trainable_stages=["layer4"])
+    for _ in range(2):
+        backbone.eval()
+        backbone.train()
+        for stage in backbone.stages:
+            module = getattr(backbone.network, stage)
+            assert module.training == (stage == "layer4")
+            assert all(p.requires_grad == (stage == "layer4") for p in module.parameters())
+    frozen_bn = backbone.network.stem[1]
+    before_mean = frozen_bn.running_mean.clone()
+    before_count = frozen_bn.num_batches_tracked.clone()
+    output = backbone(torch.randn(2, 8, 16, 16))
+    output.square().mean().backward()
+    assert backbone.network.stem[0].weight.grad is None
+    assert backbone.network.layer4[0].conv1[0].weight.grad is not None
+    torch.testing.assert_close(frozen_bn.running_mean, before_mean, rtol=0, atol=0)
+    assert torch.equal(frozen_bn.num_batches_tracked, before_count)
+
+
+@pytest.mark.parametrize("name", ["fusion3d", "fusion3d_spatial"])
+def test_frozen_streams_and_smaller_classifier_complete_training_step(name):
+    model = build_model(
+        {
+            "model": {
+                "name": name,
+                "params": {
+                    "pretrained": False,
+                    "backbone_trainable_stages": [],
+                    "classifier_hidden_dim": 32,
+                    "dropout": 0.6,
+                    "attention_dropout": 0.2,
+                },
+            }
+        }
+    ).train()
+    assert model.classifier[0].out_features == 32
+    before = model.classifier[0].weight.detach().clone()
+    frozen_before = model.ct_backbone.network.stem[0].weight.detach().clone()
+    bn_before = model.ct_backbone.network.stem[1].running_mean.clone()
+    optimizer = torch.optim.AdamW((p for p in model.parameters() if p.requires_grad), lr=1e-3)
+    logits = model(torch.randn(2, 8, 16, 16), torch.randn(2, 8, 16, 16))
+    loss = torch.nn.functional.cross_entropy(logits, torch.tensor([0, 1]))
+    optimizer.zero_grad(set_to_none=True)
+    loss.backward()
+    optimizer.step()
+    assert tuple(logits.shape) == (2, 2)
+    assert torch.isfinite(loss)
+    for stream in (model.ct_backbone, model.pet_backbone):
+        assert all(not p.requires_grad and p.grad is None for p in stream.parameters())
+        assert not stream.network.stem[1].training
+    assert not torch.equal(before, model.classifier[0].weight)
+    torch.testing.assert_close(model.ct_backbone.network.stem[0].weight, frozen_before)
+    torch.testing.assert_close(model.ct_backbone.network.stem[1].running_mean, bn_before)
+
+
+@pytest.mark.parametrize("name", ["fusion3d", "fusion3d_spatial"])
+@pytest.mark.parametrize("hidden_dim", [0, -1, True, 12.5])
+def test_invalid_classifier_width_fails_before_weight_download(monkeypatch, name, hidden_dim):
+    monkeypatch.setattr(
+        "petct.models.r3d_18", lambda **kwargs: pytest.fail("Backbone must not be constructed")
+    )
+    with pytest.raises(ConfigError, match="classifier_hidden_dim"):
+        build_model({"model": {"name": name, "params": {"classifier_hidden_dim": hidden_dim}}})

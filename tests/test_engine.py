@@ -12,6 +12,21 @@ from petct.artifacts import save_predictions, snapshot_state_dict
 from petct.metrics import binary_metrics
 
 
+@pytest.mark.parametrize("name", ["adamw", "adam", "sgd"])
+def test_optimizer_only_receives_trainable_parameters(name):
+    model = torch.nn.Sequential(torch.nn.Linear(2, 3), torch.nn.Linear(3, 2))
+    model[0].requires_grad_(False)
+    optimizer = engine.build_optimizer(model, {"training": {"optimizer": {"name": name}}})
+    actual = {id(p) for group in optimizer.param_groups for p in group["params"]}
+    assert actual == {id(p) for p in model[1].parameters()}
+
+
+def test_optimizer_rejects_a_fully_frozen_model():
+    model = torch.nn.Linear(2, 2).requires_grad_(False)
+    with pytest.raises(ValueError, match="no trainable parameters"):
+        engine.build_optimizer(model, {})
+
+
 def test_fit_selects_highest_validation_auc_not_lowest_loss(tmp_path: Path, monkeypatch) -> None:
     model = torch.nn.Linear(1, 2)
     validation = iter(

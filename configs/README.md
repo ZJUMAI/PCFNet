@@ -1,5 +1,54 @@
 # Configuration Guide
 
+## Regularized R3D-18 retraining
+
+`train_regularized.yaml` is a separate five-fold preset for the original
+`fusion3d` architecture. It keeps pretrained initialization and the existing
+data roots, while reducing the classifier width from 256 to 128, raising
+classifier dropout from 0.5 to 0.6 and attention dropout from 0.1 to 0.2,
+using AdamW weight decay 0.001 and learning rate 0.00003, and stopping after
+10 epochs without validation-AUC improvement. The maximum remains 100 epochs.
+These are starting settings, not a promise of lower training AUC or better
+generalization. The original `train.yaml` is unchanged.
+
+Use the same already generated manifests for the following comparisons. Do not
+resplit or choose a split seed based on external outcomes.
+
+```bash
+# Full fine-tuning: both pretrained backbones, fusion and classifier update.
+CUDA_VISIBLE_DEVICES=3 python -m petct crossval \
+  --config configs/train_regularized.yaml
+
+# Frozen-backbone control: only fusion and classifier update.
+CUDA_VISIBLE_DEVICES=3 python -m petct crossval \
+  --config configs/train_regularized.yaml \
+  --set 'model.params.backbone_trainable_stages=[]' \
+  --set output.run_name=fusion3d_regularized_frozen
+
+# Optional partial fine-tuning: only layer4 within each backbone updates.
+CUDA_VISIBLE_DEVICES=3 python -m petct crossval \
+  --config configs/train_regularized.yaml \
+  --set 'model.params.backbone_trainable_stages=[layer4]' \
+  --set output.run_name=fusion3d_regularized_layer4
+```
+
+`backbone_trainable_stages: null` (or omission) preserves full fine-tuning;
+`[]` freezes both backbones; a list selects `stem`, `layer1`, `layer2`,
+`layer3`, or `layer4`. Frozen stages keep BatchNorm in evaluation mode even
+when the parent model enters training mode, so their running statistics do
+not adapt. The optimizer receives trainable parameters only. Both `fusion3d`
+and `fusion3d_spatial` support this setting and `classifier_hidden_dim`.
+Existing model defaults and checkpoint keys are unchanged.
+
+This preset disables leakage simulation and per-cohort test-based epoch
+selection. Each fold restores the validation-AUC-best model, then exports
+original training/validation predictions and evaluates the three test groups
+once with that SAME model. Prediction schemas and the default no-checkpoint
+policy are unchanged. Results go to a new `fusion3d_regularized_full` run.
+Use validation, not test AUC, to decide between presets. Historical test reuse
+and test-informed split choices are not removed by retraining. These commands
+do not perform nested HPO or claim new independent validation.
+
 ## Random split-seed batches
 
 Run from the repository root in the training environment. This script changes

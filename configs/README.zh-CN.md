@@ -1,5 +1,44 @@
 # 配置说明
 
+## 正则化 R3D-18 重新训练
+
+新增 `train_regularized.yaml`，保留原始 `fusion3d` 架构、预训练初始化和现有数据路径，
+默认五折全量微调。分类头宽度从 256 减到 128，分类头 dropout 从 0.5 提到 0.6，
+attention dropout 从 0.1 提到 0.2；AdamW weight decay=0.001，学习率=0.00003。
+最多 100 epoch，验证 AUC 连续 10 epoch 未改善则停止。原 `train.yaml` 不变。
+这些只是保守起点，不保证训练 AUC 下降或泛化改善。
+
+复用已生成的同一套五折名单，不按测试集表现重选划分 seed：
+
+```bash
+# 全量微调：两路 backbone、融合层及分类头都更新。
+CUDA_VISIBLE_DEVICES=3 python -m petct crossval \
+  --config configs/train_regularized.yaml
+
+# 冻结 backbone 对照：只更新融合层及分类头。
+CUDA_VISIBLE_DEVICES=3 python -m petct crossval \
+  --config configs/train_regularized.yaml \
+  --set 'model.params.backbone_trainable_stages=[]' \
+  --set output.run_name=fusion3d_regularized_frozen
+
+# 可选：每路 backbone 只更新最后一个残差阶段。
+CUDA_VISIBLE_DEVICES=3 python -m petct crossval \
+  --config configs/train_regularized.yaml \
+  --set 'model.params.backbone_trainable_stages=[layer4]' \
+  --set output.run_name=fusion3d_regularized_layer4
+```
+
+`backbone_trainable_stages: null` 或不填表示全量微调，`[]` 表示完全冻结，
+列表可选 `stem`、`layer1`、`layer2`、`layer3`、`layer4`。冻结阶段的 BatchNorm
+保持 eval，不更新统计量；优化器只接收可训练参数。`fusion3d` 和 `fusion3d_spatial`
+均支持该选项及 `classifier_hidden_dim`，既有默认值和 state dict 键不变。
+
+此配置关闭泄露模拟和按测试队列选 epoch。每折按验证 AUC 选择一个模型，恢复后
+导出原始训练/验证预测，并用同一个模型评估三个测试集一次。预测表头不变，默认仍不保存
+`best.pt`。全量版输出为新的 `fusion3d_regularized_full` 目录，不覆盖旧配置或旧结果。
+版本之间应按验证表现选择，不能按测试 AUC 选择。重训不能消除既往反复使用测试集及
+按测试结果选划分 seed 的偏差；上述命令不包含嵌套 HPO，也不代表新的独立验证。
+
 ## 随机划分 seed 批量实验
 
 在训练环境、项目根目录运行。脚本只改变数据划分 seed，不改变训练 YAML 的

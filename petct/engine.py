@@ -60,13 +60,16 @@ def build_optimizer(model: torch.nn.Module, config: dict[str, Any]) -> torch.opt
         optimizer_config.get("learning_rate", training.get("learning_rate", 1e-4))
     )
     weight_decay = float(optimizer_config.get("weight_decay", training.get("weight_decay", 1e-4)))
+    parameters = [parameter for parameter in model.parameters() if parameter.requires_grad]
+    if not parameters:
+        raise ValueError("The model has no trainable parameters")
     if name == "adamw":
-        return AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+        return AdamW(parameters, lr=learning_rate, weight_decay=weight_decay)
     if name == "adam":
-        return torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+        return torch.optim.Adam(parameters, lr=learning_rate, weight_decay=weight_decay)
     if name == "sgd":
         return torch.optim.SGD(
-            model.parameters(),
+            parameters,
             lr=learning_rate,
             weight_decay=weight_decay,
             momentum=float(optimizer_config.get("momentum", 0.9)),

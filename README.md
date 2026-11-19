@@ -39,6 +39,11 @@ Splitting and cross-validation default to five stratified folds (approximately
 The single-run `train`, `hpo`, and `two-stage` configurations use fold 1 by
 default. See the configuration guide for five-fold training of the main model.
 
+For conservative full fine-tuning or a frozen-backbone control, use the separate
+`configs/train_regularized.yaml` five-fold preset. See
+[regularized R3D-18 retraining](configs/README.md#regularized-r3d-18-retraining).
+Existing training defaults are unchanged.
+
 An alternative five-times repeated stratified 70:30 holdout is available through
 `configs/split_70_30.yaml` and `configs/train_spatial_70_30.yaml`. This is not
 disjoint five-fold cross-validation: validation cases can recur across repeats.

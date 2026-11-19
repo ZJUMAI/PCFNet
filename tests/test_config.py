@@ -54,6 +54,7 @@ def test_training_schema_rejects_missing_split_fields() -> None:
         ("train.yaml", "train"),
         ("train_spatial.yaml", "train"),
         ("train_spatial_70_30.yaml", "crossval"),
+        ("train_regularized.yaml", "crossval"),
         ("two_stage.yaml", "two-stage"),
         ("evaluate.yaml", "evaluate"),
     ],
@@ -91,6 +92,29 @@ def test_france_external_configuration(filename: str, command: str) -> None:
 
 def _source() -> dict[str, str]:
     return dict(manifest="cases.txt", metadata="labels.csv", ct_root="ct", pet_root="pet")
+
+
+def test_regularized_retraining_preset_preserves_validation_only_selection():
+    root = Path(__file__).resolve().parents[1]
+    config = load_config(root / "configs/train_regularized.yaml")
+    original = load_config(root / "configs/train.yaml")
+    validate_config(config, "crossval")
+    assert config["cross_validation"]["folds"] == 5
+    assert config["seed"] == 42 and config["device"] == "cuda:0"
+    assert external_selection_mode(config) == "validation_best"
+    assert leakage_simulation_settings(config) is None
+    assert config["model"]["params"]["backbone_trainable_stages"] is None
+    assert config["model"]["params"]["classifier_hidden_dim"] == 128
+    assert config["model"]["params"]["pretrained"] is True
+    assert config["training"]["optimizer"]["weight_decay"] == 0.001
+    assert not checkpoint_saving_enabled(config)
+    for split in ("train", "validation"):
+        for key in ("metadata", "ct_root", "pet_root"):
+            assert config["data"][split][key] == original["data"][split][key]
+        assert "{fold}" in config["data"][split]["manifest"]
+    assert config["data"]["external"] == original["data"]["external"]
+    frozen = apply_overrides(config, ["model.params.backbone_trainable_stages=[]"])
+    assert frozen["model"]["params"]["backbone_trainable_stages"] == []
 
 
 def test_grouped_evaluation_schema() -> None:

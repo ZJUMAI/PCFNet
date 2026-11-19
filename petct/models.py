@@ -58,14 +58,41 @@ def _expand_conv3d(conv: nn.Conv3d, in_channels: int) -> nn.Conv3d:
 class VolumeBackbone(nn.Module):
     """R3D-18 feature extractor for one volumetric modality."""
 
-    def __init__(self, pretrained: bool = True):
+    stages = ("stem", "layer1", "layer2", "layer3", "layer4")
+
+    def __init__(self, pretrained: bool = True, trainable_stages: list[str] | None = None):
         super().__init__()
+        if trainable_stages is not None and (
+            not isinstance(trainable_stages, list)
+            or any(
+                not isinstance(stage, str) or stage not in self.stages for stage in trainable_stages
+            )
+            or len(trainable_stages) != len(set(trainable_stages))
+        ):
+            raise ConfigError(
+                "backbone_trainable_stages must be null or a list of unique stages: "
+                + ", ".join(self.stages)
+            )
+        self.trainable_stages = tuple(self.stages if trainable_stages is None else trainable_stages)
         weights = R3D_18_Weights.DEFAULT if pretrained else None
         network = r3d_18(weights=weights)
         network.stem[0] = _expand_conv3d(network.stem[0], 1)
         self.feature_dim = network.fc.in_features
         network.fc = nn.Identity()
         self.network = network
+        for stage in self.stages:
+            self.network.get_submodule(stage).requires_grad_(stage in self.trainable_stages)
+        self.train(self.training)
+
+    def train(self, mode: bool = True):
+        """Keep frozen stages, including BatchNorm running statistics, in eval mode."""
+
+        super().train(mode)
+        if mode:
+            for stage in self.stages:
+                if stage not in self.trainable_stages:
+                    self.network.get_submodule(stage).eval()
+        return self
 
     def forward(self, volume: torch.Tensor) -> torch.Tensor:
         if volume.ndim == 4:
@@ -120,21 +147,30 @@ class PETCTFusionClassifier(nn.Module):
         dropout: float = 0.5,
         num_heads: int = 8,
         pretrained: bool = True,
+        backbone_trainable_stages: list[str] | None = None,
+        classifier_hidden_dim: int = 256,
+        attention_dropout: float = 0.1,
     ):
         super().__init__()
-        self.ct_backbone = VolumeBackbone(pretrained)
-        self.pet_backbone = VolumeBackbone(pretrained)
-        self.fusion = BidirectionalCrossAttention(512, num_heads, dropout=0.1)
+        _validate_classifier_width(classifier_hidden_dim)
+        self.ct_backbone = VolumeBackbone(pretrained, backbone_trainable_stages)
+        self.pet_backbone = VolumeBackbone(pretrained, backbone_trainable_stages)
+        self.fusion = BidirectionalCrossAttention(512, num_heads, dropout=attention_dropout)
         self.classifier = nn.Sequential(
-            nn.Linear(512, 256),
-            nn.LayerNorm(256),
+            nn.Linear(512, classifier_hidden_dim),
+            nn.LayerNorm(classifier_hidden_dim),
             nn.ReLU(inplace=True),
             nn.Dropout(dropout),
-            nn.Linear(256, num_classes),
+            nn.Linear(classifier_hidden_dim, num_classes),
         )
 
     def forward(self, ct: torch.Tensor, pet: torch.Tensor) -> torch.Tensor:
         return self.classifier(self.fusion(self.ct_backbone(ct), self.pet_backbone(pet)))
+
+
+def _validate_classifier_width(hidden_dim: int) -> None:
+    if isinstance(hidden_dim, bool) or not isinstance(hidden_dim, int) or hidden_dim <= 0:
+        raise ConfigError("classifier_hidden_dim must be a positive integer")
 
 
 def _validate_attention_dimensions(embedding_dim: int, num_heads: int) -> None:
@@ -205,23 +241,26 @@ class PETCTSpatialFusionClassifier(nn.Module):
         num_heads: int = 4,
         attention_dropout: float = 0.1,
         pretrained: bool = True,
+        backbone_trainable_stages: list[str] | None = None,
+        classifier_hidden_dim: int = 256,
     ):
         super().__init__()
         # Validate attention dimensions before constructing/downloading backbones.
         _validate_attention_dimensions(embedding_dim, num_heads)
-        self.ct_backbone = VolumeBackbone(pretrained)
-        self.pet_backbone = VolumeBackbone(pretrained)
+        _validate_classifier_width(classifier_hidden_dim)
+        self.ct_backbone = VolumeBackbone(pretrained, backbone_trainable_stages)
+        self.pet_backbone = VolumeBackbone(pretrained, backbone_trainable_stages)
         self.ct_tokens = SpatialTokenEncoder(self.ct_backbone.feature_dim, embedding_dim)
         self.pet_tokens = SpatialTokenEncoder(self.pet_backbone.feature_dim, embedding_dim)
         self.fusion = SpatialBidirectionalCrossAttention(
             embedding_dim, num_heads, dropout=attention_dropout
         )
         self.classifier = nn.Sequential(
-            nn.Linear(embedding_dim * 2, 256),
-            nn.LayerNorm(256),
+            nn.Linear(embedding_dim * 2, classifier_hidden_dim),
+            nn.LayerNorm(classifier_hidden_dim),
             nn.ReLU(inplace=True),
             nn.Dropout(dropout),
-            nn.Linear(256, num_classes),
+            nn.Linear(classifier_hidden_dim, num_classes),
         )
 
     def forward(self, ct: torch.Tensor, pet: torch.Tensor) -> torch.Tensor:
